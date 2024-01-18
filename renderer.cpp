@@ -2,6 +2,7 @@ module;
 
 #include <vulkan/vk_enum_string_helper.h>
 #include <vulkan/vulkan_core.h>
+
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
@@ -21,6 +22,20 @@ export module renderer;
 #include "defines.h"
 
 constexpr s64 max_frames_in_flieght = 2;
+
+struct Instance_Functions {
+        PFN_vkCreateDebugUtilsMessengerEXT vkCreateDebugUtilsMessengerEXT;
+        PFN_vkEnumeratePhysicalDevices vkEnumeratePhysicalDevices;
+        PFN_vkGetPhysicalDeviceQueueFamilyProperties vkGetPhysicalDeviceQueueFamilyProperties;
+        PFN_vkGetPhysicalDeviceFormatProperties vkGetPhysicalDeviceFormatProperties;
+        PFN_vkGetPhysicalDeviceMemoryProperties vkGetPhysicalDeviceMemoryProperties;
+        PFN_vkGetPhysicalDeviceProperties vkGetPhysicalDeviceProperties;
+        PFN_vkGetPhysicalDeviceSurfaceSupportKHR vkGetPhysicalDeviceSurfaceSupportKHR;
+        PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR vkGetPhysicalDeviceSurfaceCapabilitiesKHR;
+        PFN_vkGetPhysicalDeviceSurfaceFormatsKHR vkGetPhysicalDeviceSurfaceFormatsKHR;
+        PFN_vkGetPhysicalDeviceSurfacePresentModesKHR vkGetPhysicalDeviceSurfacePresentModesKHR;
+        PFN_vkCreateDevice vkCreateDevice;
+};
 
 struct Device_Functions {
         PFN_vkGetDeviceQueue vkGetDeviceQueue;
@@ -73,13 +88,38 @@ struct Device_Functions {
         PFN_vkResetFences vkResetFences;
 };
 
+export struct mat4 {
+        float m[4][4];
+};
+
+export struct Camera {
+        mat4 model;
+        mat4 view;
+        mat4 projection;
+};
+
+export struct Ubo {
+        Camera camera;
+};
+
 export struct Render_State {
         std::pmr::polymorphic_allocator<u8> allocator;
         VkAllocationCallbacks *vulkan_allocator = nullptr;
 
+        char **enabled_layer_names;
+        u32 layer_count;
+        char **enabled_extension_names;
+        u32 extension_count;
+
         VkInstance instance;
+        VkSurfaceKHR window_surface;
+        Instance_Functions instance_functions;
         PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
         VkPhysicalDevice physical_device;
+
+        char **enabled_device_extensions;
+        u32 device_extension_count;
+
         VkDevice device;
         PFN_vkGetDeviceProcAddr vkGetDeviceProcAddr;
         Device_Functions device_functions;
@@ -91,18 +131,33 @@ export struct Render_State {
 
         VkCommandBuffer *command_buffers;
 
-        VkSemaphore * image_available_semaphores;
-        VkSemaphore * render_finished_semaphores;
-        VkFence * image_in_flieght_fences;
+        VkSemaphore *image_available_semaphores;
+        VkSemaphore *render_finished_semaphores;
+        VkFence *image_in_flieght_fences;
 
         s64 current_frame = 0;
+        Ubo ubo = {1,.2222,.123, 0};
 };
 
 template <typename T> T load_instance_function(Render_State *state, char const *name) noexcept { return reinterpret_cast<T>(state->vkGetInstanceProcAddr(state->instance, name)); }
 
 template <typename T> T load_device_function(Render_State *state, char const *name) noexcept { return reinterpret_cast<T>(state->vkGetDeviceProcAddr(state->device, name)); }
 
-void load_device_functions(Render_State *state){
+void load_instance_functions(Render_State *state) {
+        state->instance_functions.vkCreateDebugUtilsMessengerEXT = load_instance_function<PFN_vkCreateDebugUtilsMessengerEXT>(state, "vkCreateDebugUtilsMessengerEXT");
+        state->instance_functions.vkEnumeratePhysicalDevices = load_instance_function<PFN_vkEnumeratePhysicalDevices>(state, "vkEnumeratePhysicalDevices");
+        state->instance_functions.vkGetPhysicalDeviceQueueFamilyProperties = load_instance_function<PFN_vkGetPhysicalDeviceQueueFamilyProperties>(state, "vkGetPhysicalDeviceQueueFamilyProperties");
+        state->instance_functions.vkGetPhysicalDeviceFormatProperties = load_instance_function<PFN_vkGetPhysicalDeviceFormatProperties>(state, "vkGetPhysicalDeviceFormatProperties");
+        state->instance_functions.vkGetPhysicalDeviceMemoryProperties = load_instance_function<PFN_vkGetPhysicalDeviceMemoryProperties>(state, "vkGetPhysicalDeviceMemoryProperties");
+        state->instance_functions.vkGetPhysicalDeviceProperties = load_instance_function<PFN_vkGetPhysicalDeviceProperties>(state, "vkGetPhysicalDeviceProperties");
+        state->instance_functions.vkGetPhysicalDeviceSurfaceSupportKHR = load_instance_function<PFN_vkGetPhysicalDeviceSurfaceSupportKHR>(state, "vkGetPhysicalDeviceSurfaceSupportKHR");
+        state->instance_functions.vkGetPhysicalDeviceSurfaceCapabilitiesKHR = load_instance_function<PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR>(state, "vkGetPhysicalDeviceSurfaceCapabilitiesKHR");
+        state->instance_functions.vkGetPhysicalDeviceSurfaceFormatsKHR = load_instance_function<PFN_vkGetPhysicalDeviceSurfaceFormatsKHR>(state, "vkGetPhysicalDeviceSurfaceFormatsKHR");
+        state->instance_functions.vkGetPhysicalDeviceSurfacePresentModesKHR = load_instance_function<PFN_vkGetPhysicalDeviceSurfacePresentModesKHR>(state, "vkGetPhysicalDeviceSurfacePresentModesKHR");
+        state->instance_functions.vkCreateDevice = load_instance_function<PFN_vkCreateDevice>(state, "vkCreateDevice");
+}
+
+void load_device_functions(Render_State *state) {
         state->vkGetDeviceProcAddr = load_instance_function<PFN_vkGetDeviceProcAddr>(state, "vkGetDeviceProcAddr");
         state->device_functions.vkGetDeviceQueue = load_device_function<PFN_vkGetDeviceQueue>(state, "vkGetDeviceQueue");
         state->device_functions.vkCreateSwapchainKHR = load_device_function<PFN_vkCreateSwapchainKHR>(state, "vkCreateSwapchainKHR");
@@ -165,12 +220,10 @@ template <typename T> static T load_vulkan_function(const char *name) { return r
 
 template <typename T> static T load_vulkan_function(VkInstance instance, const char *name) { return reinterpret_cast<T>(glfwGetInstanceProcAddress(instance, name)); }
 
+auto create_basic_graphics_pipeline(Render_State *state) {}
+
 export auto initalize(Render_State *state, GLFWwindow *window) {
         puts("initalizeing vulkan render state");
-
-        auto const vkCreateInstance = load_vulkan_function<PFN_vkCreateInstance>("vkCreateInstance");
-        state->vkGetInstanceProcAddr = load_vulkan_function<PFN_vkGetInstanceProcAddr>("vkGetInstanceProcAddr");
-
         auto app_info = VkApplicationInfo{
                 .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
                 .pNext = nullptr,
@@ -203,62 +256,49 @@ export auto initalize(Render_State *state, GLFWwindow *window) {
                 .ppEnabledExtensionNames = extension_names.data(),
         };
 
+        auto const vkCreateInstance = load_vulkan_function<PFN_vkCreateInstance>("vkCreateInstance");
+
         if (vkCreateInstance(&instantce_info, state->vulkan_allocator, &state->instance) not_eq VK_SUCCESS) {
                 std::puts("Unable to create vulkan instance.\n");
         }
-
-        auto const vkCreateDebugUtilsMessengerEXT = load_instance_function<PFN_vkCreateDebugUtilsMessengerEXT>(state, "vkCreateDebugUtilsMessengerEXT");
-        auto const vkEnumeratePhysicalDevices = load_instance_function<PFN_vkEnumeratePhysicalDevices>(state, "vkEnumeratePhysicalDevices");
-        auto const vkGetPhysicalDeviceQueueFamilyProperties = load_instance_function<PFN_vkGetPhysicalDeviceQueueFamilyProperties>(state, "vkGetPhysicalDeviceQueueFamilyProperties");
-        auto const vkGetPhysicalDeviceFormatProperties = load_instance_function<PFN_vkGetPhysicalDeviceFormatProperties>(state, "vkGetPhysicalDeviceFormatProperties");
-        auto const vkGetPhysicalDeviceMemoryProperties =load_instance_function<PFN_vkGetPhysicalDeviceMemoryProperties>(state, "vkGetPhysicalDeviceMemoryProperties");
-        auto const vkGetPhysicalDeviceProperties =load_instance_function<PFN_vkGetPhysicalDeviceProperties>(state, "vkGetPhysicalDeviceProperties");
-
-        auto const vkGetPhysicalDeviceSurfaceSupportKHR = load_instance_function<PFN_vkGetPhysicalDeviceSurfaceSupportKHR>(state, "vkGetPhysicalDeviceSurfaceSupportKHR");
-        auto const vkGetPhysicalDeviceSurfaceCapabilitiesKHR = load_instance_function<PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR>(state, "vkGetPhysicalDeviceSurfaceCapabilitiesKHR");
-        auto const vkGetPhysicalDeviceSurfaceFormatsKHR = load_instance_function<PFN_vkGetPhysicalDeviceSurfaceFormatsKHR>(state, "vkGetPhysicalDeviceSurfaceFormatsKHR");
-        auto const vkGetPhysicalDeviceSurfacePresentModesKHR = load_instance_function<PFN_vkGetPhysicalDeviceSurfacePresentModesKHR>(state, "vkGetPhysicalDeviceSurfacePresentModesKHR");
-
-        auto const vkCreateDevice = load_instance_function<PFN_vkCreateDevice>(state, "vkCreateDevice");
-
+        state->vkGetInstanceProcAddr = load_vulkan_function<PFN_vkGetInstanceProcAddr>(state->instance, "vkGetInstanceProcAddr");
+        load_instance_functions(state);
         auto debug_messenger_info = VkDebugUtilsMessengerCreateInfoEXT{
                 .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
                 .pNext = nullptr,
                 .flags = {},
-                .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+                .messageSeverity = /* VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | */ VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
                 .messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_DEVICE_ADDRESS_BINDING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
                 .pfnUserCallback = debug_callback,
         };
 
         VkDebugUtilsMessengerEXT debug_utils_messenger;
-        if (not vkCreateDebugUtilsMessengerEXT) {
+        if (not state->instance_functions.vkCreateDebugUtilsMessengerEXT) {
                 std::puts("unable to load debug utils messenger.\n");
-        } else if (vkCreateDebugUtilsMessengerEXT(state->instance, &debug_messenger_info, state->vulkan_allocator, &debug_utils_messenger) not_eq VK_SUCCESS) {
+        } else if (state->instance_functions.vkCreateDebugUtilsMessengerEXT(state->instance, &debug_messenger_info, state->vulkan_allocator, &debug_utils_messenger) not_eq VK_SUCCESS) {
                 std::puts("unable to create debug utils messenger.\n");
         }
 
-        VkSurfaceKHR surface;
-        if (glfwCreateWindowSurface(state->instance, window, state->vulkan_allocator, &surface) not_eq VK_SUCCESS) {
+        if (glfwCreateWindowSurface(state->instance, window, state->vulkan_allocator, &state->window_surface) not_eq VK_SUCCESS) {
                 std::puts("Unable to get surface");
                 std::terminate();
         }
 
         uint32_t device_count = 0;
-        ;
-        if (vkEnumeratePhysicalDevices(state->instance, &device_count, nullptr) not_eq VK_SUCCESS or device_count == 0) {
+        if (state->instance_functions.vkEnumeratePhysicalDevices(state->instance, &device_count, nullptr) not_eq VK_SUCCESS or device_count == 0) {
                 std::puts("no physical device.");
                 std::terminate();
         }
-        VkPhysicalDevice physical_devices[device_count];
-        vkEnumeratePhysicalDevices(state->instance, &device_count, physical_devices);
+        auto physical_devices = std::vector<VkPhysicalDevice>(device_count);
+        state->instance_functions.vkEnumeratePhysicalDevices(state->instance, &device_count, physical_devices.data());
 
         auto physical_device = physical_devices[0];
 
         auto const [graphics_index, present_index, compute_index] = std::invoke([&] {
                 uint32_t property_count = 0;
-                vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &property_count, nullptr);
+                state->instance_functions.vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &property_count, nullptr);
                 VkQueueFamilyProperties properties[property_count];
-                vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &property_count, properties);
+                state->instance_functions.vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &property_count, properties);
 
                 struct {
                         int32_t graphics_index;
@@ -275,7 +315,7 @@ export auto initalize(Render_State *state, GLFWwindow *window) {
                                 indices.compute_index = i;
                         }
                         VkBool32 surface_is_supported = VK_FALSE;
-                        if (vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, i, surface, &surface_is_supported) not_eq VK_SUCCESS) {
+                        if (state->instance_functions.vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, i, state->window_surface, &surface_is_supported) not_eq VK_SUCCESS) {
                                 std::puts(std::format("device surface support for queue index {} is not supported", i).c_str());
                                 continue;
                         }
@@ -320,83 +360,83 @@ export auto initalize(Render_State *state, GLFWwindow *window) {
                 .pEnabledFeatures = &device_features,
         };
 
-        if (vkCreateDevice(physical_device, &device_create_info, state->vulkan_allocator, &state->device) not_eq VK_SUCCESS) {
+        if (state->instance_functions.vkCreateDevice(physical_device, &device_create_info, state->vulkan_allocator, &state->device) not_eq VK_SUCCESS) {
                 puts("unable to create device");
                 exit(42);
         }
         puts("loading device functions.");
         load_device_functions(state);
-        auto const vkGetDeviceQueue =state->device_functions.vkGetDeviceQueue;
-        auto const vkCreateSwapchainKHR =state->device_functions.vkCreateSwapchainKHR;
-        auto const vkGetSwapchainImagesKHR =state->device_functions.vkGetSwapchainImagesKHR;
-        auto const vkCreateImageView =state->device_functions.vkCreateImageView;
-        auto const vkCreateShaderModule =state->device_functions.vkCreateShaderModule;
-        auto const vkCreateDescriptorPool =state->device_functions.vkCreateDescriptorPool;
-        auto const vkCreateDescriptorSetLayout =state->device_functions.vkCreateDescriptorSetLayout;
-        auto const vkCreatePipelineLayout =state->device_functions.vkCreatePipelineLayout;
-        auto const vkCreateGraphicsPipelines =state->device_functions.vkCreateGraphicsPipelines;
-        auto const vkCreateRenderPass =state->device_functions.vkCreateRenderPass;
-        auto const vkCreateImage =state->device_functions.vkCreateImage;
-        auto const vkBindBufferMemory =state->device_functions.vkBindBufferMemory;
-        auto const vkGetBufferMemoryRequirements =state->device_functions.vkGetBufferMemoryRequirements;
-        auto const vkAllocateDescriptorSets =state->device_functions.vkAllocateDescriptorSets;
-        auto const vkUpdateDescriptorSets =state->device_functions.vkUpdateDescriptorSets;
-        auto const vkAllocateCommandBuffers =state->device_functions.vkAllocateCommandBuffers;
-        auto const vkBeginCommandBuffer =state->device_functions.vkBeginCommandBuffer;
-        auto const vkEndCommandBuffer =state->device_functions.vkEndCommandBuffer;
-        auto const vkCmdCopyBuffer =state->device_functions.vkCmdCopyBuffer;
-        auto const vkCmdBeginRenderPass =state->device_functions.vkCmdBeginRenderPass;
-        auto const vkCmdEndRenderPass =state->device_functions.vkCmdEndRenderPass;
-        auto const vkCmdSetScissor =state->device_functions.vkCmdSetScissor;
-        auto const vkCmdSetViewport =state->device_functions.vkCmdSetViewport;
-        auto const vkCmdBindPipeline =state->device_functions.vkCmdBindPipeline;
-        auto const vkCmdBindDescriptorSets =state->device_functions.vkCmdBindDescriptorSets;
-        auto const vkCmdDispatch =state->device_functions.vkCmdDispatch;
-        auto const vkCmdBindVertexBuffers =state->device_functions.vkCmdBindVertexBuffers;
-        auto const vkCmdBindIndexBuffer =state->device_functions.vkCmdBindIndexBuffer;
-        auto const vkCmdDraw =state->device_functions.vkCmdDraw;
-        auto const vkCmdDrawIndexed =state->device_functions.vkCmdDrawIndexed;
-        auto const vkQueueSubmit =state->device_functions.vkQueueSubmit;
-        auto const vkDeviceWaitIdle =state->device_functions.vkDeviceWaitIdle;
-        auto const vkMapMemory =state->device_functions.vkMapMemory;
-        auto const vkUnmapMemory =state->device_functions.vkUnmapMemory;
-        auto const vkAllocateMemory =state->device_functions.vkAllocateMemory;
-        auto const vkGetImageMemoryRequirements =state->device_functions.vkGetImageMemoryRequirements;
-        auto const vkBindImageMemory =state->device_functions.vkBindImageMemory;
-        auto const vkCreateFramebuffer =state->device_functions.vkCreateFramebuffer;
-        auto const vkCreateCommandPool =state->device_functions.vkCreateCommandPool;
-        auto const vkCreateBuffer =state->device_functions.vkCreateBuffer;
-        auto const vkCreateComputePipelines =state->device_functions.vkCreateComputePipelines;
-        auto const vkCreateSemaphore =state->device_functions.vkCreateSemaphore;
-        auto const vkCreateFence =state->device_functions.vkCreateFence;
-        auto const vkAcquireNextImageKHR =state->device_functions.vkAcquireNextImageKHR;
-        auto const vkQueuePresentKHR =state->device_functions.vkQueuePresentKHR;
-        auto const vkQueueWaitIdle =state->device_functions.vkQueueWaitIdle;
-        auto const vkWaitForFences =state->device_functions.vkWaitForFences;
-        auto const vkResetFences =state->device_functions.vkResetFences;
+        auto const vkGetDeviceQueue = state->device_functions.vkGetDeviceQueue;
+        auto const vkCreateSwapchainKHR = state->device_functions.vkCreateSwapchainKHR;
+        auto const vkGetSwapchainImagesKHR = state->device_functions.vkGetSwapchainImagesKHR;
+        auto const vkCreateImageView = state->device_functions.vkCreateImageView;
+        auto const vkCreateShaderModule = state->device_functions.vkCreateShaderModule;
+        auto const vkCreateDescriptorPool = state->device_functions.vkCreateDescriptorPool;
+        auto const vkCreateDescriptorSetLayout = state->device_functions.vkCreateDescriptorSetLayout;
+        auto const vkCreatePipelineLayout = state->device_functions.vkCreatePipelineLayout;
+        auto const vkCreateGraphicsPipelines = state->device_functions.vkCreateGraphicsPipelines;
+        auto const vkCreateRenderPass = state->device_functions.vkCreateRenderPass;
+        auto const vkCreateImage = state->device_functions.vkCreateImage;
+        auto const vkBindBufferMemory = state->device_functions.vkBindBufferMemory;
+        auto const vkGetBufferMemoryRequirements = state->device_functions.vkGetBufferMemoryRequirements;
+        auto const vkAllocateDescriptorSets = state->device_functions.vkAllocateDescriptorSets;
+        auto const vkUpdateDescriptorSets = state->device_functions.vkUpdateDescriptorSets;
+        auto const vkAllocateCommandBuffers = state->device_functions.vkAllocateCommandBuffers;
+        auto const vkBeginCommandBuffer = state->device_functions.vkBeginCommandBuffer;
+        auto const vkEndCommandBuffer = state->device_functions.vkEndCommandBuffer;
+        auto const vkCmdCopyBuffer = state->device_functions.vkCmdCopyBuffer;
+        auto const vkCmdBeginRenderPass = state->device_functions.vkCmdBeginRenderPass;
+        auto const vkCmdEndRenderPass = state->device_functions.vkCmdEndRenderPass;
+        auto const vkCmdSetScissor = state->device_functions.vkCmdSetScissor;
+        auto const vkCmdSetViewport = state->device_functions.vkCmdSetViewport;
+        auto const vkCmdBindPipeline = state->device_functions.vkCmdBindPipeline;
+        auto const vkCmdBindDescriptorSets = state->device_functions.vkCmdBindDescriptorSets;
+        auto const vkCmdDispatch = state->device_functions.vkCmdDispatch;
+        auto const vkCmdBindVertexBuffers = state->device_functions.vkCmdBindVertexBuffers;
+        auto const vkCmdBindIndexBuffer = state->device_functions.vkCmdBindIndexBuffer;
+        auto const vkCmdDraw = state->device_functions.vkCmdDraw;
+        auto const vkCmdDrawIndexed = state->device_functions.vkCmdDrawIndexed;
+        auto const vkQueueSubmit = state->device_functions.vkQueueSubmit;
+        auto const vkDeviceWaitIdle = state->device_functions.vkDeviceWaitIdle;
+        auto const vkMapMemory = state->device_functions.vkMapMemory;
+        auto const vkUnmapMemory = state->device_functions.vkUnmapMemory;
+        auto const vkAllocateMemory = state->device_functions.vkAllocateMemory;
+        auto const vkGetImageMemoryRequirements = state->device_functions.vkGetImageMemoryRequirements;
+        auto const vkBindImageMemory = state->device_functions.vkBindImageMemory;
+        auto const vkCreateFramebuffer = state->device_functions.vkCreateFramebuffer;
+        auto const vkCreateCommandPool = state->device_functions.vkCreateCommandPool;
+        auto const vkCreateBuffer = state->device_functions.vkCreateBuffer;
+        auto const vkCreateComputePipelines = state->device_functions.vkCreateComputePipelines;
+        auto const vkCreateSemaphore = state->device_functions.vkCreateSemaphore;
+        auto const vkCreateFence = state->device_functions.vkCreateFence;
+        auto const vkAcquireNextImageKHR = state->device_functions.vkAcquireNextImageKHR;
+        auto const vkQueuePresentKHR = state->device_functions.vkQueuePresentKHR;
+        auto const vkQueueWaitIdle = state->device_functions.vkQueueWaitIdle;
+        auto const vkWaitForFences = state->device_functions.vkWaitForFences;
+        auto const vkResetFences = state->device_functions.vkResetFences;
 
         vkGetDeviceQueue(state->device, graphics_index, 0, &state->graphics_queue);
 
         VkSurfaceCapabilitiesKHR surface_capabilities;
-        if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &surface_capabilities) not_eq VK_SUCCESS) {
+        if (state->instance_functions.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, state->window_surface, &surface_capabilities) not_eq VK_SUCCESS) {
                 puts("unable to get surface capabilities");
                 std::exit(39393);
         }
 
         uint32_t format_count = 0;
-        if (vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &format_count, nullptr) not_eq VK_SUCCESS) {
+        if (state->instance_functions.vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, state->window_surface, &format_count, nullptr) not_eq VK_SUCCESS) {
                 std::exit(39393);
         }
         VkSurfaceFormatKHR formats[format_count];
-        vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &format_count, formats);
+        state->instance_functions.vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, state->window_surface, &format_count, formats);
         auto const surface_format = formats[0];
 
         uint32_t present_mode_count = 0;
-        if (vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &present_mode_count, nullptr) not_eq VK_SUCCESS) {
+        if (state->instance_functions.vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, state->window_surface, &present_mode_count, nullptr) not_eq VK_SUCCESS) {
                 std::exit(39393);
         }
         VkPresentModeKHR present_modes[present_mode_count];
-        vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &format_count, present_modes);
+        state->instance_functions.vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, state->window_surface, &format_count, present_modes);
         auto const surface_present_mode = present_modes[0];
 
         int32_t window_width, window_height;
@@ -424,7 +464,7 @@ export auto initalize(Render_State *state, GLFWwindow *window) {
                 .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
                 .pNext = nullptr,
                 .flags = {},
-                .surface = surface,
+                .surface = state->window_surface,
                 .minImageCount = surface_capabilities.minImageCount + 1,
                 .imageFormat = surface_format.format,
                 .imageColorSpace = surface_format.colorSpace,
@@ -494,9 +534,6 @@ export auto initalize(Render_State *state, GLFWwindow *window) {
                 .attachment = 0,
                 .layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         };
-
-        if (not vkGetPhysicalDeviceFormatProperties)
-                exit(2323);
 
         // auto depth_format = std::optional<VkFormat>(std::nullopt);
         // for (auto format : {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT,
@@ -811,24 +848,17 @@ export auto initalize(Render_State *state, GLFWwindow *window) {
                 .pImmutableSamplers = nullptr,
         };
 
-        auto const sphere_binding = VkDescriptorSetLayoutBinding{
-                .binding = 0,
-                .descriptorType = VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-                .descriptorCount = 1,
-                .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
-                .pImmutableSamplers = nullptr,
+        auto const descriptor_set_bindings = std::array{
+                ubo_binding,
+                // sampler_binding,
         };
 
-        // auto const descriptor_set_bindings = std::array{
-        //         // ubo_binding,
-        //         // sampler_binding,
-        //         sphere_binding,
-        // };
-
         auto const descriptor_set_info = VkDescriptorSetLayoutCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, .pNext = nullptr, .flags = {}, .bindingCount = 0, .pBindings = nullptr,
-                // .bindingCount = descriptor_set_bindings.size(),
-                // .pBindings = descriptor_set_bindings.data(),
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                .pNext = nullptr,
+                .flags = {},
+                .bindingCount = descriptor_set_bindings.size(),
+                .pBindings = descriptor_set_bindings.data(),
         };
 
         VkDescriptorSetLayout descriptor_set_layout;
@@ -841,8 +871,8 @@ export auto initalize(Render_State *state, GLFWwindow *window) {
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
                 .pNext = nullptr,
                 .flags = {},
-                .setLayoutCount = 0,
-                .pSetLayouts = nullptr,
+                .setLayoutCount = 1,
+                .pSetLayouts = &descriptor_set_layout,
         };
 
         VkPipelineLayout pipeline_layout;
@@ -876,7 +906,7 @@ export auto initalize(Render_State *state, GLFWwindow *window) {
         }
 
         VkPhysicalDeviceMemoryProperties physical_device_memory_properties;
-        vkGetPhysicalDeviceMemoryProperties(physical_device, &physical_device_memory_properties);
+        state->instance_functions.vkGetPhysicalDeviceMemoryProperties(physical_device, &physical_device_memory_properties);
         auto const find_memory_type = [&physical_device_memory_properties](uint32_t memory_bits_requirement, VkMemoryPropertyFlags properties) noexcept {
                 for (uint32_t memory_type_index = 0; memory_type_index < physical_device_memory_properties.memoryTypeCount; ++memory_type_index) {
                         auto memory_properties = physical_device_memory_properties.memoryTypes[memory_type_index];
@@ -1086,108 +1116,72 @@ export auto initalize(Render_State *state, GLFWwindow *window) {
         auto indices = std::vector<uint32_t>{2, 1, 3, 0, 1, 2};
         auto const [index_memory, index_buffer] = stage_and_copy_buffer(indices, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
 
-        // Raytracer Image and Buffers
-        auto const [spheres_memory, spheres_buffer] = stage_and_copy_buffer(std::vector{.0f, .9f, .29f, 1.3f}, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
 
-        VkPhysicalDeviceProperties physical_device_properties;
-        vkGetPhysicalDeviceProperties(physical_device, &physical_device_properties);
-        auto const [max_x_count, max_y_count, max_z_count] = physical_device_properties.limits.maxComputeWorkGroupCount;
-        auto const [max_x_size, max_y_size, max_z_size] = physical_device_properties.limits.maxComputeWorkGroupSize;
+        auto const ubo_buffer_size = sizeof(Ubo);
+        VkDeviceMemory staging_memory;
+        VkBuffer staging_buffer;
+        create_buffer(VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, ubo_buffer_size, &staging_buffer, &staging_memory);
+        void *buffer_data_staging_memory;
+        vkMapMemory(state->device, staging_memory, 0, ubo_buffer_size, 0, &buffer_data_staging_memory);
+        std::memcpy(buffer_data_staging_memory, &state->ubo, ubo_buffer_size);
+        vkUnmapMemory(state->device, staging_memory);
+        VkDeviceMemory ubo_buffer_memory;
+        VkBuffer ubo_buffer;
+        create_buffer(VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, ubo_buffer_size, &ubo_buffer, &ubo_buffer_memory);
+        buffer_copy(staging_buffer, ubo_buffer, ubo_buffer_size);
 
-        // TODO: create image of same size as max size for compent work group.
-        auto const raytracer_image_create_info = VkImageCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-                .imageType = VkImageType::VK_IMAGE_TYPE_2D,
-                .tiling = VkImageTiling::VK_IMAGE_TILING_OPTIMAL,
-                .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT,
-                .sharingMode = VkSharingMode::VK_SHARING_MODE_EXCLUSIVE,
-                .initialLayout = VkImageLayout::VK_IMAGE_LAYOUT_GENERAL,
+        auto const uniform_descriptor_pool_size = VkDescriptorPoolSize{ .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount = max_frames_in_flieght };
+        auto const uniform_descriptor_pool_create_info = VkDescriptorPoolCreateInfo{
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+                .maxSets = max_frames_in_flieght,
+                .poolSizeCount = 1,
+                .pPoolSizes = &uniform_descriptor_pool_size,
         };
 
-        auto const compute_descriptor_set_layout_binding = [](uint32_t binding) -> VkDescriptorSetLayoutBinding {
-                return {
-                        .binding = binding,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                        .descriptorCount = 1,
-                        .stageFlags = VK_SHADER_STAGE_COMPUTE_BIT,
-                        .pImmutableSamplers = nullptr,
-                };
-        };
-        auto const compute_layout_bindings = std::array{
-                compute_descriptor_set_layout_binding(0),
-                // TODO: materials and other raytracer shapes.
-                //  compute_descriptor_set_layout_binding(1)
-        };
-
-        auto const compute_descriptor_set_layout_create_info = VkDescriptorSetLayoutCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-                .flags = {},
-                .bindingCount = compute_layout_bindings.size(),
-                .pBindings = compute_layout_bindings.data(),
-        };
-
-        VkDescriptorSetLayout compute_descriptor_set_layout;
-        vkCreateDescriptorSetLayout(state->device, &compute_descriptor_set_layout_create_info, state->vulkan_allocator, &compute_descriptor_set_layout);
-
-        auto const compute_shader_stage = VkPipelineShaderStageCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-                .stage = VK_SHADER_STAGE_COMPUTE_BIT,
-                .module = computer_shader_module,
-                .pName = "main",
-        };
-
-        auto const compute_layout_create_info = VkPipelineLayoutCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-                .setLayoutCount = 1,
-                .pSetLayouts = &compute_descriptor_set_layout,
-        };
-
-        VkPipelineLayout compute_layout;
-        vkCreatePipelineLayout(state->device, &compute_layout_create_info, state->vulkan_allocator, &compute_layout);
-
-        auto const compute_pipeline_create_info = VkComputePipelineCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-                .stage = compute_shader_stage,
-                .layout = compute_layout,
-        };
-
-        VkPipeline compute_pipeline;
-        vkCreateComputePipelines(state->device, VK_NULL_HANDLE, 1, &compute_pipeline_create_info, state->vulkan_allocator, &compute_pipeline);
-
-        VkCommandBuffer comput_command_buffer;
-        auto const compute_command_buffer_allocate_info = VkCommandBufferAllocateInfo{
-                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-                .commandPool = command_pool,
-                .level = VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-                .commandBufferCount = 1,
-        };
-
-        if (vkAllocateCommandBuffers(state->device, &compute_command_buffer_allocate_info, &comput_command_buffer) not_eq VK_SUCCESS) {
-                std::puts("unable to allocate compute command buffer");
-                std::exit(420);
+        VkDescriptorPool uniform_descriptor_pool;
+        if (auto const result = state->device_functions.vkCreateDescriptorPool(state->device, &uniform_descriptor_pool_create_info, state->vulkan_allocator, &uniform_descriptor_pool); result not_eq VK_SUCCESS) {
+                puts(std::format("unable to create descriptor pool {}", string_VkResult(result)).c_str());
+                exit(429);
         }
 
-        auto compute_command_buffer_begin_info = VkCommandBufferBeginInfo{
-                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        auto const descripotor_set_allocaiton_info = VkDescriptorSetAllocateInfo{
+                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                .descriptorPool = uniform_descriptor_pool,
+                .descriptorSetCount = 1,
+                .pSetLayouts = &descriptor_set_layout,
         };
 
-        auto const descriptor_pool_size = VkDescriptorPoolSize{
-                .type = VkDescriptorType::VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        VkDescriptorSet uniform_descriptor_set;
+        if (auto const result = state->device_functions.vkAllocateDescriptorSets(state->device, &descripotor_set_allocaiton_info, &uniform_descriptor_set); result not_eq VK_SUCCESS) {
+                puts(std::format("unable to allocate descriptor sets {}", string_VkResult(result)).c_str());
+                exit(420);
+        }
+
+        auto const uniform_buffer_info = VkDescriptorBufferInfo{
+                .buffer = ubo_buffer,
+                .offset = 0,
+                .range = ubo_buffer_size,
+        };
+        auto const descriptor_write = VkWriteDescriptorSet{
+                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .dstSet = uniform_descriptor_set,
+                .dstBinding = 0,
+                .dstArrayElement = 0,
                 .descriptorCount = 1,
+                .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                .pImageInfo = nullptr,
+                .pBufferInfo = &uniform_buffer_info,
+                .pTexelBufferView = nullptr,
         };
-        auto const descriptor_pool_create_info = VkDescriptorPoolCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-                .maxSets = 3,
-                .pPoolSizes = &descriptor_pool_size,
-        };
+        state->device_functions.vkUpdateDescriptorSets(state->device, 1, &descriptor_write, 0, nullptr);
 
-        // Command buffers.
         auto const command_buffer_allocate_info = VkCommandBufferAllocateInfo{
                 .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
                 .commandPool = command_pool,
                 .level = VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_PRIMARY,
                 .commandBufferCount = static_cast<uint32_t>(frame_buffers.size()),
         };
+
         if (not vkAllocateCommandBuffers) {
                 exit(1);
         }
@@ -1205,6 +1199,7 @@ export auto initalize(Render_State *state, GLFWwindow *window) {
                 .offset = {0, 0},
                 .extent = image_extent,
         };
+
         for (auto i = 0; i < state->swapchain_image_count; ++i) {
                 auto const &command_buffer = state->command_buffers[i];
                 auto const &frame_buffer = frame_buffers[i];
@@ -1232,6 +1227,9 @@ export auto initalize(Render_State *state, GLFWwindow *window) {
                 VkDeviceSize offsets = 0;
                 vkCmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffer, &offsets);
                 vkCmdBindIndexBuffer(command_buffer, index_buffer, 0, VkIndexType::VK_INDEX_TYPE_UINT32);
+
+                vkCmdBindDescriptorSets(command_buffer, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &uniform_descriptor_set, 0, nullptr);
+
                 vkCmdDrawIndexed(command_buffer, indices.size(), 1, 0, 0, 0);
                 vkCmdEndRenderPass(command_buffer);
                 vkEndCommandBuffer(command_buffer);
@@ -1262,7 +1260,6 @@ export auto initalize(Render_State *state, GLFWwindow *window) {
 }
 
 export auto draw_frame(Render_State *state) {
-
 
         state->device_functions.vkDeviceWaitIdle(state->device);
         auto &image_in_flieght_fence = state->image_in_flieght_fences[state->current_frame];
