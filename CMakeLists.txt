@@ -10,7 +10,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 
-add_subdirectory("glfw")
 
 set(VERT_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/shader.vert")
 set(FRAG_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/shader.frag")
@@ -28,9 +27,14 @@ add_custom_command(
 add_custom_target(shader_target DEPENDS ${VERT_OUTPUT} ${FRAG_OUTPUT})
 
 
+add_subdirectory("glfw")
+add_subdirectory("glm")
+add_subdirectory("Vulkan-Headers")
+
 add_executable(plastic)
-target_sources(plastic PRIVATE FILE_SET modules TYPE CXX_MODULES FILES renderer.cpp)
+# TODO: modules when they work.
+# target_sources(plastic PRIVATE FILE_SET modules TYPE CXX_MODULES FILES renderer.cpp)
 target_sources(plastic PRIVATE main.cpp)
 
-target_link_libraries(plastic glfw)
+target_link_libraries(plastic PRIVATE Vulkan::Headers glfw glm::glm-header-only)
 add_dependencies(plastic shader_target)

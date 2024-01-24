@@ -1,25 +1,8 @@
-module;
+#pragma once
 
-#include <vulkan/vk_enum_string_helper.h>
-#include <vulkan/vulkan_core.h>
-
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
-
-#include <algorithm>
-#include <cstdint>
-#include <cstring>
-#include <filesystem>
-#include <format>
-#include <fstream>
-#include <functional>
-#include <iostream>
-#include <ostream>
-#include <thread>
-#include <vector>
-
-export module renderer;
 #include "defines.h"
+#include "includes.h"
+#include "mesh.cpp"
 
 constexpr s64 max_frames_in_flieght = 2;
 
@@ -63,6 +46,7 @@ struct Device_Functions {
         PFN_vkCmdSetViewport vkCmdSetViewport;
         PFN_vkCmdBindPipeline vkCmdBindPipeline;
         PFN_vkCmdBindDescriptorSets vkCmdBindDescriptorSets;
+        PFN_vkCmdPushConstants vkCmdPushConstants;
         PFN_vkCmdDispatch vkCmdDispatch;
         PFN_vkCmdBindVertexBuffers vkCmdBindVertexBuffers;
         PFN_vkCmdBindIndexBuffer vkCmdBindIndexBuffer;
@@ -88,21 +72,12 @@ struct Device_Functions {
         PFN_vkResetFences vkResetFences;
 };
 
-export struct mat4 {
-        float m[4][4];
+struct Ubo {
+        glm::mat4 camera;
+        glm::mat4 model;
 };
 
-export struct Camera {
-        mat4 model;
-        mat4 view;
-        mat4 projection;
-};
-
-export struct Ubo {
-        Camera camera;
-};
-
-export struct Render_State {
+struct Render_State {
         std::pmr::polymorphic_allocator<u8> allocator;
         VkAllocationCallbacks *vulkan_allocator = nullptr;
 
@@ -124,19 +99,40 @@ export struct Render_State {
         PFN_vkGetDeviceProcAddr vkGetDeviceProcAddr;
         Device_Functions device_functions;
         VkSwapchainKHR swapchain;
+        VkExtent2D swapchain_extent;
         u32 swapchain_image_count;
+        VkRenderPass render_pass;
+        VkViewport viewport;
+        VkDescriptorSet uniform_descriptor_set;
+        VkPipelineLayout pipeline_layout;
+        VkPipeline graphics_pipeline;
+        // TODO: change everything
+        u32 vertex_count;
+        VkBuffer vertex_buffer;
+        VkDeviceMemory vertex_buffer_memory;
+
+        u32 index_count;
+        VkBuffer index_buffer;
+        VkDeviceMemory index_buffer_memory;
 
         VkQueue graphics_queue;
         VkQueue present_queue;
-
+        VkFramebuffer *frame_buffers;
         VkCommandBuffer *command_buffers;
+
+        // VkBuffer uniform_buffers[max_frames_in_flieght];
+        // void * uniform_buffers_mapped_memory[max_frames_in_flieght];
+        VkBuffer ubo_buffer;
+        VkDeviceMemory ubo_memory;
+        void *ubo_mapped_memory;
 
         VkSemaphore *image_available_semaphores;
         VkSemaphore *render_finished_semaphores;
         VkFence *image_in_flieght_fences;
 
         s64 current_frame = 0;
-        Ubo ubo = {1,.2222,.123, 0};
+        Ubo ubo;
+        u8 bla[1024];
 };
 
 template <typename T> T load_instance_function(Render_State *state, char const *name) noexcept { return reinterpret_cast<T>(state->vkGetInstanceProcAddr(state->instance, name)); }
@@ -187,6 +183,7 @@ void load_device_functions(Render_State *state) {
         state->device_functions.vkCmdDispatch = load_device_function<PFN_vkCmdDispatch>(state, "vkCmdDispatch");
         state->device_functions.vkCmdBindVertexBuffers = load_device_function<PFN_vkCmdBindVertexBuffers>(state, "vkCmdBindVertexBuffers");
         state->device_functions.vkCmdBindIndexBuffer = load_device_function<PFN_vkCmdBindIndexBuffer>(state, "vkCmdBindIndexBuffer");
+        state->device_functions.vkCmdPushConstants = load_device_function<PFN_vkCmdPushConstants>(state, "vkCmdPushConstants");
         state->device_functions.vkCmdDraw = load_device_function<PFN_vkCmdDraw>(state, "vkCmdDraw");
         state->device_functions.vkCmdDrawIndexed = load_device_function<PFN_vkCmdDrawIndexed>(state, "vkCmdDrawIndexed");
         state->device_functions.vkQueueSubmit = load_device_function<PFN_vkQueueSubmit>(state, "vkQueueSubmit");
@@ -210,9 +207,7 @@ void load_device_functions(Render_State *state) {
 }
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void *pUserData) {
-
         std::puts(std::format("validation layer {} :{} \n", string_VkDebugUtilsMessageSeverityFlagsEXT(messageSeverity), pCallbackData->pMessage).c_str());
-
         return VK_FALSE;
 }
 
@@ -222,7 +217,7 @@ template <typename T> static T load_vulkan_function(VkInstance instance, const c
 
 auto create_basic_graphics_pipeline(Render_State *state) {}
 
-export auto initalize(Render_State *state, GLFWwindow *window) {
+auto initalize(Render_State *state, GLFWwindow *window) {
         puts("initalizeing vulkan render state");
         auto app_info = VkApplicationInfo{
                 .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
@@ -444,7 +439,7 @@ export auto initalize(Render_State *state, GLFWwindow *window) {
 
         auto min_image_extent = surface_capabilities.minImageExtent;
         auto max_image_extent = surface_capabilities.maxImageExtent;
-        auto const image_extent = VkExtent2D{
+        state->swapchain_extent = VkExtent2D{
                 .width = std::clamp<uint32_t>(static_cast<uint32_t>(window_width), min_image_extent.width, max_image_extent.width),
                 .height = std::clamp<uint32_t>(static_cast<uint32_t>(window_height), min_image_extent.height, max_image_extent.height),
         };
@@ -468,7 +463,7 @@ export auto initalize(Render_State *state, GLFWwindow *window) {
                 .minImageCount = surface_capabilities.minImageCount + 1,
                 .imageFormat = surface_format.format,
                 .imageColorSpace = surface_format.colorSpace,
-                .imageExtent = image_extent,
+                .imageExtent = state->swapchain_extent,
                 .imageArrayLayers = 1,
                 .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
                 .imageSharingMode = sharing_mode,
@@ -607,10 +602,9 @@ export auto initalize(Render_State *state, GLFWwindow *window) {
                 .pDependencies = &subpass_dependency,
         };
 
-        VkRenderPass render_pass;
         if (not vkCreateRenderPass)
                 exit(123);
-        if (vkCreateRenderPass(state->device, &render_pass_create_info, state->vulkan_allocator, &render_pass) not_eq VK_SUCCESS) {
+        if (vkCreateRenderPass(state->device, &render_pass_create_info, state->vulkan_allocator, &state->render_pass) not_eq VK_SUCCESS) {
                 std::puts("unable to create render pass");
                 std::exit(1);
         }
@@ -654,16 +648,6 @@ export auto initalize(Render_State *state, GLFWwindow *window) {
                 .pNext = nullptr,
                 .flags = {},
                 .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
-                .module = fragment_shader_module,
-                .pName = "main",
-        };
-
-        auto const computer_shader_module = create_shader_module("shader.comp.spv");
-        auto const compute_shader_stage_create_info = VkPipelineShaderStageCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-                .pNext = nullptr,
-                .flags = {},
-                .stage = VK_SHADER_STAGE_COMPUTE_BIT,
                 .module = fragment_shader_module,
                 .pName = "main",
         };
@@ -734,18 +718,18 @@ export auto initalize(Render_State *state, GLFWwindow *window) {
                 .primitiveRestartEnable = VK_FALSE,
         };
 
-        auto const viewport = VkViewport{
+        state->viewport = VkViewport{
                 .x = 0,
                 .y = 0,
-                .width = static_cast<float>(image_extent.width),
-                .height = static_cast<float>(image_extent.height),
+                .width = static_cast<float>(state->swapchain_extent.width),
+                .height = static_cast<float>(state->swapchain_extent.height),
                 .minDepth = 0,
                 .maxDepth = 1,
         };
 
         auto const scissor = VkRect2D{
                 .offset = {0, 0},
-                .extent = image_extent,
+                .extent = state->swapchain_extent,
         };
 
         auto const viewport_state_info = VkPipelineViewportStateCreateInfo{
@@ -753,7 +737,7 @@ export auto initalize(Render_State *state, GLFWwindow *window) {
                 .pNext = nullptr,
                 .flags = {},
                 .viewportCount = 1,
-                .pViewports = &viewport,
+                .pViewports = &state->viewport,
                 .scissorCount = 1,
                 .pScissors = &scissor,
         };
@@ -867,16 +851,24 @@ export auto initalize(Render_State *state, GLFWwindow *window) {
                 std::exit(1);
         }
 
+        auto const ubo_push_constant_range = VkPushConstantRange{
+                .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+                .offset = 0,
+                .size = sizeof(Ubo),
+        };
+
         auto const pipeline_layout_info = VkPipelineLayoutCreateInfo{
                 .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
                 .pNext = nullptr,
                 .flags = {},
                 .setLayoutCount = 1,
                 .pSetLayouts = &descriptor_set_layout,
+                .pushConstantRangeCount = 1,
+                .pPushConstantRanges = &ubo_push_constant_range,
+
         };
 
-        VkPipelineLayout pipeline_layout;
-        if (vkCreatePipelineLayout(state->device, &pipeline_layout_info, state->vulkan_allocator, &pipeline_layout) not_eq VK_SUCCESS) {
+        if (vkCreatePipelineLayout(state->device, &pipeline_layout_info, state->vulkan_allocator, &state->pipeline_layout) not_eq VK_SUCCESS) {
                 std::puts("unable to create pipeline layout");
                 std::exit(1);
         }
@@ -894,13 +886,12 @@ export auto initalize(Render_State *state, GLFWwindow *window) {
                 .pMultisampleState = &multisampling,
                 .pColorBlendState = &color_blending,
                 .pDynamicState = &dynamic_state,
-                .layout = pipeline_layout,
-                .renderPass = render_pass,
+                .layout = state->pipeline_layout,
+                .renderPass = state->render_pass,
         };
 
         std::puts("making graphics pipeline");
-        VkPipeline graphics_pipeline;
-        if (vkCreateGraphicsPipelines(state->device, nullptr, 1, &pipeline_create_info, state->vulkan_allocator, &graphics_pipeline) not_eq VK_SUCCESS) {
+        if (vkCreateGraphicsPipelines(state->device, nullptr, 1, &pipeline_create_info, state->vulkan_allocator, &state->graphics_pipeline) not_eq VK_SUCCESS) {
                 std::puts("unable to create graphics pipelines.");
                 std::exit(89888);
         }
@@ -991,7 +982,7 @@ export auto initalize(Render_State *state, GLFWwindow *window) {
         //         std::exit(520);
         // }
 
-        auto frame_buffers = std::vector<VkFramebuffer>(state->swapchain_image_count);
+        state->frame_buffers = state->allocator.allocate_object<VkFramebuffer>(state->swapchain_image_count);
         for (auto i = 0; i < state->swapchain_image_count; ++i) {
                 auto const attachments = std::array{
                         // depth_image_view,
@@ -1001,14 +992,14 @@ export auto initalize(Render_State *state, GLFWwindow *window) {
                 auto const creat_info = VkFramebufferCreateInfo{
                         .sType = VkStructureType::VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
                         .flags = {},
-                        .renderPass = render_pass,
+                        .renderPass = state->render_pass,
                         .attachmentCount = attachments.size(),
                         .pAttachments = attachments.data(),
-                        .width = image_extent.width,
-                        .height = image_extent.height,
+                        .width = state->swapchain_extent.width,
+                        .height = state->swapchain_extent.height,
                         .layers = 1,
                 };
-                if (vkCreateFramebuffer(state->device, &creat_info, state->vulkan_allocator, &frame_buffers[i]) not_eq VK_SUCCESS) {
+                if (vkCreateFramebuffer(state->device, &creat_info, state->vulkan_allocator, &state->frame_buffers[i]) not_eq VK_SUCCESS) {
                         exit(630);
                 }
         }
@@ -1105,32 +1096,33 @@ export auto initalize(Render_State *state, GLFWwindow *window) {
                 return buffer_handle_and_memory;
         };
 
-        auto vertices = std::vector<vertex_position>{
-                vertex_position{.9, .9, 0},
-                vertex_position{-.9, .9, 0},
-                vertex_position{.9, -.9, 0},
-                vertex_position{-.9, -.9, 0},
-        };
+        auto [vertices, indices] = create_icosphere(1);
+
+        // auto vertices = std::vector<vertex_position>{
+        //         vertex_position{.9, .9, 0},
+        //         vertex_position{-.9, .9, 0},
+        //         vertex_position{.9, -.9, 0},
+        //         vertex_position{-.9, -.9, 0},
+        // };
+        // auto vertices = std::vector(ico_vertices, ico_vertices+ 12);
         auto const [vertex_memory, vertex_buffer] = stage_and_copy_buffer(vertices, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+        state->vertex_buffer = vertex_buffer;
+        state->vertex_buffer_memory = vertex_memory;
 
-        auto indices = std::vector<uint32_t>{2, 1, 3, 0, 1, 2};
+        // auto indices = std::vector<uint32_t>{2, 1, 3, 0, 1, 2};
+        // auto indices = std::vector(ico_indices, ico_indices+60);
         auto const [index_memory, index_buffer] = stage_and_copy_buffer(indices, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-
+        state->index_count = indices.size();
+        state->index_buffer = index_buffer;
+        state->index_buffer_memory = index_memory;
 
         auto const ubo_buffer_size = sizeof(Ubo);
-        VkDeviceMemory staging_memory;
-        VkBuffer staging_buffer;
-        create_buffer(VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, ubo_buffer_size, &staging_buffer, &staging_memory);
-        void *buffer_data_staging_memory;
-        vkMapMemory(state->device, staging_memory, 0, ubo_buffer_size, 0, &buffer_data_staging_memory);
-        std::memcpy(buffer_data_staging_memory, &state->ubo, ubo_buffer_size);
-        vkUnmapMemory(state->device, staging_memory);
-        VkDeviceMemory ubo_buffer_memory;
-        VkBuffer ubo_buffer;
-        create_buffer(VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, ubo_buffer_size, &ubo_buffer, &ubo_buffer_memory);
-        buffer_copy(staging_buffer, ubo_buffer, ubo_buffer_size);
+        VkBuffer staging_ubo_buffer;
+        create_buffer(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, ubo_buffer_size, &state->ubo_buffer, &state->ubo_memory);
+        state->device_functions.vkMapMemory(state->device, state->ubo_memory, 0, ubo_buffer_size, 0, &state->ubo_mapped_memory);
+        memcpy(state->ubo_mapped_memory, &state->ubo, ubo_buffer_size);
 
-        auto const uniform_descriptor_pool_size = VkDescriptorPoolSize{ .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount = max_frames_in_flieght };
+        auto const uniform_descriptor_pool_size = VkDescriptorPoolSize{.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount = max_frames_in_flieght};
         auto const uniform_descriptor_pool_create_info = VkDescriptorPoolCreateInfo{
                 .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
                 .maxSets = max_frames_in_flieght,
@@ -1151,20 +1143,20 @@ export auto initalize(Render_State *state, GLFWwindow *window) {
                 .pSetLayouts = &descriptor_set_layout,
         };
 
-        VkDescriptorSet uniform_descriptor_set;
-        if (auto const result = state->device_functions.vkAllocateDescriptorSets(state->device, &descripotor_set_allocaiton_info, &uniform_descriptor_set); result not_eq VK_SUCCESS) {
+        if (auto const result = state->device_functions.vkAllocateDescriptorSets(state->device, &descripotor_set_allocaiton_info, &state->uniform_descriptor_set); result not_eq VK_SUCCESS) {
                 puts(std::format("unable to allocate descriptor sets {}", string_VkResult(result)).c_str());
                 exit(420);
         }
 
         auto const uniform_buffer_info = VkDescriptorBufferInfo{
-                .buffer = ubo_buffer,
+                .buffer = state->ubo_buffer,
                 .offset = 0,
                 .range = ubo_buffer_size,
         };
-        auto const descriptor_write = VkWriteDescriptorSet{
+
+        auto const write_descriptor = VkWriteDescriptorSet{
                 .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                .dstSet = uniform_descriptor_set,
+                .dstSet = state->uniform_descriptor_set,
                 .dstBinding = 0,
                 .dstArrayElement = 0,
                 .descriptorCount = 1,
@@ -1173,66 +1165,25 @@ export auto initalize(Render_State *state, GLFWwindow *window) {
                 .pBufferInfo = &uniform_buffer_info,
                 .pTexelBufferView = nullptr,
         };
-        state->device_functions.vkUpdateDescriptorSets(state->device, 1, &descriptor_write, 0, nullptr);
+
+        state->device_functions.vkUpdateDescriptorSets(state->device, 1, &write_descriptor, 0, nullptr);
 
         auto const command_buffer_allocate_info = VkCommandBufferAllocateInfo{
                 .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
                 .commandPool = command_pool,
                 .level = VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-                .commandBufferCount = static_cast<uint32_t>(frame_buffers.size()),
+                .commandBufferCount = static_cast<uint32_t>(state->swapchain_image_count),
         };
-
-        if (not vkAllocateCommandBuffers) {
-                exit(1);
-        }
 
         state->command_buffers = state->allocator.allocate_object<VkCommandBuffer>(state->swapchain_image_count);
         if (vkAllocateCommandBuffers(state->device, &command_buffer_allocate_info, state->command_buffers) not_eq VK_SUCCESS) {
                 std::puts("unable to allocate command buffers");
                 std::exit(420);
         }
-        auto const clear_values = std::array{
-                VkClearValue{.color = VkClearColorValue{.float32 = {1, 0, 1, 0}}},
-                VkClearValue{.depthStencil = VkClearDepthStencilValue{.depth = 1, .stencil = 0}},
-        };
-        auto const viewport_scissor = VkRect2D{
-                .offset = {0, 0},
-                .extent = image_extent,
-        };
 
         for (auto i = 0; i < state->swapchain_image_count; ++i) {
                 auto const &command_buffer = state->command_buffers[i];
-                auto const &frame_buffer = frame_buffers[i];
-
-                auto const command_buffer_begin_info = VkCommandBufferBeginInfo{
-                        .sType = VkStructureType::VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-                };
-
-                vkBeginCommandBuffer(command_buffer, &command_buffer_begin_info);
-
-                auto const render_pass_begin_info = VkRenderPassBeginInfo{
-                        .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-                        .renderPass = render_pass,
-                        .framebuffer = frame_buffer,
-                        .renderArea = VkRect2D{.offset{0, 0}, .extent = image_extent},
-                        .clearValueCount = clear_values.size(),
-                        .pClearValues = clear_values.data(),
-                };
-                vkCmdBeginRenderPass(command_buffer, &render_pass_begin_info, VkSubpassContents::VK_SUBPASS_CONTENTS_INLINE);
-
-                vkCmdSetViewport(command_buffer, 0, 1, &viewport);
-                vkCmdSetScissor(command_buffer, 0, 1, &viewport_scissor);
-                vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
-
-                VkDeviceSize offsets = 0;
-                vkCmdBindVertexBuffers(command_buffer, 0, 1, &vertex_buffer, &offsets);
-                vkCmdBindIndexBuffer(command_buffer, index_buffer, 0, VkIndexType::VK_INDEX_TYPE_UINT32);
-
-                vkCmdBindDescriptorSets(command_buffer, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &uniform_descriptor_set, 0, nullptr);
-
-                vkCmdDrawIndexed(command_buffer, indices.size(), 1, 0, 0, 0);
-                vkCmdEndRenderPass(command_buffer);
-                vkEndCommandBuffer(command_buffer);
+                auto const &frame_buffer = state->frame_buffers[i];
         }
 
         auto current_frame = 0;
@@ -1251,16 +1202,63 @@ export auto initalize(Render_State *state, GLFWwindow *window) {
                         .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
                         .flags = VkFenceCreateFlagBits::VK_FENCE_CREATE_SIGNALED_BIT,
                 };
-                if (vkCreateFence(state->device, &fence_create_info, state->vulkan_allocator, &state->image_in_flieght_fences[i]) not_eq VK_SUCCESS)
+                if (vkCreateFence(state->device, &fence_create_info, state->vulkan_allocator, &state->image_in_flieght_fences[i]) not_eq VK_SUCCESS){
                         std::exit(765987);
+                }
         }
 
         std::puts(std::format(" present index = {}", present_index).c_str());
         vkGetDeviceQueue(state->device, present_index, 0, &state->present_queue);
+        state->device_functions.vkDeviceWaitIdle(state->device);
 }
 
-export auto draw_frame(Render_State *state) {
+void record_command_buffers(Render_State const *state, u32 swapchain_image_index) {
+        auto const clear_values = std::array{
+                VkClearValue{.color = VkClearColorValue{.float32 = {1, 0, 1, 0}}},
+                VkClearValue{.depthStencil = VkClearDepthStencilValue{.depth = 1, .stencil = 0}},
+        };
+        auto const viewport_scissor = VkRect2D{
+                .offset = {0, 0},
+                .extent = state->swapchain_extent,
+        };
 
+        auto &command_buffer = state->command_buffers[swapchain_image_index];
+        auto &frame_buffer = state->frame_buffers[swapchain_image_index];
+
+        auto const command_buffer_begin_info = VkCommandBufferBeginInfo{
+                .sType = VkStructureType::VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        };
+
+        state->device_functions.vkBeginCommandBuffer(command_buffer, &command_buffer_begin_info);
+
+        auto const render_pass_begin_info = VkRenderPassBeginInfo{
+                .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+                .renderPass = state->render_pass,
+                .framebuffer = frame_buffer,
+                .renderArea = VkRect2D{.offset{0, 0}, .extent = state->swapchain_extent},
+                .clearValueCount = clear_values.size(),
+                .pClearValues = clear_values.data(),
+        };
+        state->device_functions.vkCmdBeginRenderPass(command_buffer, &render_pass_begin_info, VkSubpassContents::VK_SUBPASS_CONTENTS_INLINE);
+
+        state->device_functions.vkCmdSetViewport(command_buffer, 0, 1, &state->viewport);
+        state->device_functions.vkCmdSetScissor(command_buffer, 0, 1, &viewport_scissor);
+        state->device_functions.vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, state->graphics_pipeline);
+
+        VkDeviceSize offsets = 0;
+        state->device_functions.vkCmdBindVertexBuffers(command_buffer, 0, 1, &state->vertex_buffer, &offsets);
+        state->device_functions.vkCmdBindIndexBuffer(command_buffer, state->index_buffer, 0, VkIndexType::VK_INDEX_TYPE_UINT32);
+
+        state->device_functions.vkCmdBindDescriptorSets(command_buffer, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, state->pipeline_layout, 0, 1, &state->uniform_descriptor_set, 0, nullptr);
+        // state->device_functions.vkCmdPushConstants(command_buffer, state->pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Ubo), &state->ubo);
+
+        // TODO: bind a freaking defffered draw buffer thingamajig or mesh shader drawer thingy.
+        state->device_functions.vkCmdDrawIndexed(command_buffer, state->index_count, 1, 0, 0, 0);
+        state->device_functions.vkCmdEndRenderPass(command_buffer);
+        state->device_functions.vkEndCommandBuffer(command_buffer);
+}
+
+auto draw_frame(Render_State *state) {
         state->device_functions.vkDeviceWaitIdle(state->device);
         auto &image_in_flieght_fence = state->image_in_flieght_fences[state->current_frame];
         auto &image_available_semaphore = state->image_available_semaphores[state->current_frame];
@@ -1273,12 +1271,13 @@ export auto draw_frame(Render_State *state) {
                 std::puts("unable to reset fence");
         }
 
-        // TODO update uniform buffer.
+        // TODO: update uniform buffer.
 
         uint32_t swapchain_image_index;
         if (state->device_functions.vkAcquireNextImageKHR(state->device, state->swapchain, UINT64_MAX, image_available_semaphore, image_in_flieght_fence, &swapchain_image_index) not_eq VK_SUCCESS) {
                 std::puts("unable to aquire next swapchian image index.");
         }
+
 
         VkPipelineStageFlags wait_dst_stage_mask = VkPipelineStageFlagBits::VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         auto const submit_info = VkSubmitInfo{
@@ -1297,9 +1296,8 @@ export auto draw_frame(Render_State *state) {
         auto const present_info = VkPresentInfoKHR{
                 .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
                 .pNext = nullptr,
-                .waitSemaphoreCount = 0,
-                .pWaitSemaphores = nullptr,
-
+                .waitSemaphoreCount = 1,
+                .pWaitSemaphores = &render_finished_semaphore,
                 .swapchainCount = 1,
                 .pSwapchains = &state->swapchain,
                 .pImageIndices = &swapchain_image_index,
