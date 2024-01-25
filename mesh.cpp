@@ -96,6 +96,9 @@ auto midpoint(glm::vec3 a, glm::vec3 b) {
         c.z = (a.z + b.z) / 2;
         return c;
 }
+//TODO: real subdivide instead of whatever i'm doing down below. also move this to a mesh_shader.
+auto sqrt3_subdivide(auto mesh){
+}
 
 auto create_icosphere(u64 subdivisions) {
         auto bla = create_icosahedron();
@@ -174,21 +177,21 @@ auto create_icosphere(u64 subdivisions) {
                                 }
                         }
 
-                        indices.push_back( point_indices[0]);
-                        indices.push_back( midpoint_indices[0]);
-                        indices.push_back( midpoint_indices[2]);
+                        indices.push_back(point_indices[0]);
+                        indices.push_back(midpoint_indices[0]);
+                        indices.push_back(midpoint_indices[2]);
 
-                        indices.push_back( midpoint_indices[0]);
-                        indices.push_back( midpoint_indices[2]);
-                        indices.push_back( midpoint_indices[1]);
+                        indices.push_back(midpoint_indices[0]);
+                        indices.push_back(midpoint_indices[1]);
+                        indices.push_back(midpoint_indices[2]);
 
-                        indices.push_back( point_indices[1]);
-                        indices.push_back( midpoint_indices[0]);
-                        indices.push_back( midpoint_indices[1]);
+                        indices.push_back(point_indices[1]);
+                        indices.push_back(midpoint_indices[1]);
+                        indices.push_back(midpoint_indices[0]);
 
-                        indices.push_back( point_indices[2]);
-                        indices.push_back( midpoint_indices[1]);
-                        indices.push_back( midpoint_indices[2]);
+                        indices.push_back(point_indices[2]);
+                        indices.push_back(midpoint_indices[2]);
+                        indices.push_back(midpoint_indices[1]);
                 }
 
                 sphere.indices = indices;

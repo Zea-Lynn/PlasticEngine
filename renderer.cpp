@@ -9,6 +9,7 @@ constexpr s64 max_frames_in_flieght = 2;
 struct Instance_Functions {
         PFN_vkCreateDebugUtilsMessengerEXT vkCreateDebugUtilsMessengerEXT;
         PFN_vkEnumeratePhysicalDevices vkEnumeratePhysicalDevices;
+        PFN_vkGetPhysicalDeviceFeatures vkGetPhysicalDeviceFeatures;
         PFN_vkGetPhysicalDeviceQueueFamilyProperties vkGetPhysicalDeviceQueueFamilyProperties;
         PFN_vkGetPhysicalDeviceFormatProperties vkGetPhysicalDeviceFormatProperties;
         PFN_vkGetPhysicalDeviceMemoryProperties vkGetPhysicalDeviceMemoryProperties;
@@ -65,16 +66,32 @@ struct Device_Functions {
         PFN_vkCreateComputePipelines vkCreateComputePipelines;
         PFN_vkCreateSemaphore vkCreateSemaphore;
         PFN_vkCreateFence vkCreateFence;
+        PFN_vkWaitForFences vkWaitForFences;
+        PFN_vkResetFences vkResetFences;
+        PFN_vkDestroyFence vkDestroyFence; 
         PFN_vkAcquireNextImageKHR vkAcquireNextImageKHR;
         PFN_vkQueuePresentKHR vkQueuePresentKHR;
         PFN_vkQueueWaitIdle vkQueueWaitIdle;
-        PFN_vkWaitForFences vkWaitForFences;
-        PFN_vkResetFences vkResetFences;
+
 };
 
 struct Ubo {
         glm::mat4 camera;
         glm::mat4 model;
+};
+
+struct Triangle_Mesh{
+        u32 vertex_count;
+        VkBuffer vertex_buffer;
+        VkDeviceMemory vertex_buffer_memory;
+
+        u32 index_count;
+        VkBuffer index_buffer;
+        VkDeviceMemory index_buffer_memory;
+};
+
+struct Line_Mesh{
+
 };
 
 struct Render_State {
@@ -91,6 +108,7 @@ struct Render_State {
         Instance_Functions instance_functions;
         PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
         VkPhysicalDevice physical_device;
+        VkPhysicalDeviceFeatures physical_device_features;
 
         char **enabled_device_extensions;
         u32 device_extension_count;
@@ -114,6 +132,14 @@ struct Render_State {
         u32 index_count;
         VkBuffer index_buffer;
         VkDeviceMemory index_buffer_memory;
+        
+        Line_Mesh bounding_sphere_mesh;
+        Line_Mesh debug_mesh;
+        Line_Mesh selected_object_mesh;
+
+        Triangle_Mesh terrain_mesh;
+        Triangle_Mesh some_entity_mesh;
+
 
         VkQueue graphics_queue;
         VkQueue present_queue;
@@ -142,6 +168,7 @@ template <typename T> T load_device_function(Render_State *state, char const *na
 void load_instance_functions(Render_State *state) {
         state->instance_functions.vkCreateDebugUtilsMessengerEXT = load_instance_function<PFN_vkCreateDebugUtilsMessengerEXT>(state, "vkCreateDebugUtilsMessengerEXT");
         state->instance_functions.vkEnumeratePhysicalDevices = load_instance_function<PFN_vkEnumeratePhysicalDevices>(state, "vkEnumeratePhysicalDevices");
+        state->instance_functions.vkGetPhysicalDeviceFeatures = load_instance_function<PFN_vkGetPhysicalDeviceFeatures>(state, "vkGetPhysicalDeviceFeatures");
         state->instance_functions.vkGetPhysicalDeviceQueueFamilyProperties = load_instance_function<PFN_vkGetPhysicalDeviceQueueFamilyProperties>(state, "vkGetPhysicalDeviceQueueFamilyProperties");
         state->instance_functions.vkGetPhysicalDeviceFormatProperties = load_instance_function<PFN_vkGetPhysicalDeviceFormatProperties>(state, "vkGetPhysicalDeviceFormatProperties");
         state->instance_functions.vkGetPhysicalDeviceMemoryProperties = load_instance_function<PFN_vkGetPhysicalDeviceMemoryProperties>(state, "vkGetPhysicalDeviceMemoryProperties");
@@ -204,6 +231,7 @@ void load_device_functions(Render_State *state) {
         state->device_functions.vkQueueWaitIdle = load_device_function<PFN_vkQueueWaitIdle>(state, "vkQueueWaitIdle");
         state->device_functions.vkWaitForFences = load_device_function<PFN_vkWaitForFences>(state, "vkWaitForFences");
         state->device_functions.vkResetFences = load_device_function<PFN_vkResetFences>(state, "vkResetFences");
+        state->device_functions.vkDestroyFence = load_device_function<PFN_vkDestroyFence>(state, "vkDestroyFence");
 }
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData, void *pUserData) {
@@ -287,13 +315,14 @@ auto initalize(Render_State *state, GLFWwindow *window) {
         auto physical_devices = std::vector<VkPhysicalDevice>(device_count);
         state->instance_functions.vkEnumeratePhysicalDevices(state->instance, &device_count, physical_devices.data());
 
-        auto physical_device = physical_devices[0];
+        //TODO: choose a proper rendering device.
+        state->physical_device = physical_devices[0];
 
         auto const [graphics_index, present_index, compute_index] = std::invoke([&] {
                 uint32_t property_count = 0;
-                state->instance_functions.vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &property_count, nullptr);
+                state->instance_functions.vkGetPhysicalDeviceQueueFamilyProperties(state->physical_device, &property_count, nullptr);
                 VkQueueFamilyProperties properties[property_count];
-                state->instance_functions.vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &property_count, properties);
+                state->instance_functions.vkGetPhysicalDeviceQueueFamilyProperties(state->physical_device, &property_count, properties);
 
                 struct {
                         int32_t graphics_index;
@@ -310,7 +339,7 @@ auto initalize(Render_State *state, GLFWwindow *window) {
                                 indices.compute_index = i;
                         }
                         VkBool32 surface_is_supported = VK_FALSE;
-                        if (state->instance_functions.vkGetPhysicalDeviceSurfaceSupportKHR(physical_device, i, state->window_surface, &surface_is_supported) not_eq VK_SUCCESS) {
+                        if (state->instance_functions.vkGetPhysicalDeviceSurfaceSupportKHR(state->physical_device, i, state->window_surface, &surface_is_supported) not_eq VK_SUCCESS) {
                                 std::puts(std::format("device surface support for queue index {} is not supported", i).c_str());
                                 continue;
                         }
@@ -329,7 +358,7 @@ auto initalize(Render_State *state, GLFWwindow *window) {
 
         char const *device_extensions[1] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 
-        auto const device_features = VkPhysicalDeviceFeatures{};
+        state->instance_functions.vkGetPhysicalDeviceFeatures(state->physical_device, &state->physical_device_features);
 
         auto const queue_create_infos = std::array{
                 VkDeviceQueueCreateInfo{
@@ -352,10 +381,10 @@ auto initalize(Render_State *state, GLFWwindow *window) {
                 .ppEnabledLayerNames = layer_names.data(),
                 .enabledExtensionCount = 1,
                 .ppEnabledExtensionNames = device_extensions,
-                .pEnabledFeatures = &device_features,
+                .pEnabledFeatures = &state->physical_device_features,
         };
 
-        if (state->instance_functions.vkCreateDevice(physical_device, &device_create_info, state->vulkan_allocator, &state->device) not_eq VK_SUCCESS) {
+        if (state->instance_functions.vkCreateDevice(state->physical_device, &device_create_info, state->vulkan_allocator, &state->device) not_eq VK_SUCCESS) {
                 puts("unable to create device");
                 exit(42);
         }
@@ -413,25 +442,25 @@ auto initalize(Render_State *state, GLFWwindow *window) {
         vkGetDeviceQueue(state->device, graphics_index, 0, &state->graphics_queue);
 
         VkSurfaceCapabilitiesKHR surface_capabilities;
-        if (state->instance_functions.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, state->window_surface, &surface_capabilities) not_eq VK_SUCCESS) {
+        if (state->instance_functions.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(state->physical_device, state->window_surface, &surface_capabilities) not_eq VK_SUCCESS) {
                 puts("unable to get surface capabilities");
                 std::exit(39393);
         }
 
         uint32_t format_count = 0;
-        if (state->instance_functions.vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, state->window_surface, &format_count, nullptr) not_eq VK_SUCCESS) {
+        if (state->instance_functions.vkGetPhysicalDeviceSurfaceFormatsKHR(state->physical_device, state->window_surface, &format_count, nullptr) not_eq VK_SUCCESS) {
                 std::exit(39393);
         }
         VkSurfaceFormatKHR formats[format_count];
-        state->instance_functions.vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, state->window_surface, &format_count, formats);
+        state->instance_functions.vkGetPhysicalDeviceSurfaceFormatsKHR(state->physical_device, state->window_surface, &format_count, formats);
         auto const surface_format = formats[0];
 
         uint32_t present_mode_count = 0;
-        if (state->instance_functions.vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, state->window_surface, &present_mode_count, nullptr) not_eq VK_SUCCESS) {
+        if (state->instance_functions.vkGetPhysicalDeviceSurfacePresentModesKHR(state->physical_device, state->window_surface, &present_mode_count, nullptr) not_eq VK_SUCCESS) {
                 std::exit(39393);
         }
         VkPresentModeKHR present_modes[present_mode_count];
-        state->instance_functions.vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, state->window_surface, &format_count, present_modes);
+        state->instance_functions.vkGetPhysicalDeviceSurfacePresentModesKHR(state->physical_device, state->window_surface, &format_count, present_modes);
         auto const surface_present_mode = present_modes[0];
 
         int32_t window_width, window_height;
@@ -748,10 +777,13 @@ auto initalize(Render_State *state, GLFWwindow *window) {
                 .flags = {},
                 .depthClampEnable = VK_FALSE,
                 .rasterizerDiscardEnable = VK_FALSE,
+                // .polygonMode = VK_POLYGON_MODE_POINT,
                 .polygonMode = VK_POLYGON_MODE_FILL,
+                // .polygonMode = VK_POLYGON_MODE_LINE,
                 .cullMode = VK_CULL_MODE_BACK_BIT,
                 .frontFace = VK_FRONT_FACE_CLOCKWISE,
                 .depthBiasEnable = VK_FALSE,
+                .lineWidth = 40,
         };
 
         auto const multisampling = VkPipelineMultisampleStateCreateInfo{
@@ -897,7 +929,7 @@ auto initalize(Render_State *state, GLFWwindow *window) {
         }
 
         VkPhysicalDeviceMemoryProperties physical_device_memory_properties;
-        state->instance_functions.vkGetPhysicalDeviceMemoryProperties(physical_device, &physical_device_memory_properties);
+        state->instance_functions.vkGetPhysicalDeviceMemoryProperties(state->physical_device, &physical_device_memory_properties);
         auto const find_memory_type = [&physical_device_memory_properties](uint32_t memory_bits_requirement, VkMemoryPropertyFlags properties) noexcept {
                 for (uint32_t memory_type_index = 0; memory_type_index < physical_device_memory_properties.memoryTypeCount; ++memory_type_index) {
                         auto memory_properties = physical_device_memory_properties.memoryTypes[memory_type_index];
@@ -1271,13 +1303,17 @@ auto draw_frame(Render_State *state) {
                 std::puts("unable to reset fence");
         }
 
-        // TODO: update uniform buffer.
-
         uint32_t swapchain_image_index;
         if (state->device_functions.vkAcquireNextImageKHR(state->device, state->swapchain, UINT64_MAX, image_available_semaphore, image_in_flieght_fence, &swapchain_image_index) not_eq VK_SUCCESS) {
                 std::puts("unable to aquire next swapchian image index.");
         }
 
+        if (state->device_functions.vkWaitForFences(state->device, 1, &image_in_flieght_fence, VK_TRUE, UINT64_MAX) not_eq VK_SUCCESS) {
+                std::puts("unable to wait for frame fence");
+        }
+        if (state->device_functions.vkResetFences(state->device, 1, &image_in_flieght_fence) not_eq VK_SUCCESS) {
+                std::puts("unable to reset fence");
+        }
 
         VkPipelineStageFlags wait_dst_stage_mask = VkPipelineStageFlagBits::VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         auto const submit_info = VkSubmitInfo{
