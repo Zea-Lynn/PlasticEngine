@@ -30,11 +30,12 @@ add_custom_target(shader_target DEPENDS ${VERT_OUTPUT} ${FRAG_OUTPUT})
 add_subdirectory("glfw")
 add_subdirectory("glm")
 add_subdirectory("Vulkan-Headers")
+add_subdirectory("Vulkan-Utility-Libraries")
 
 add_executable(plastic)
 # TODO: modules when they work.
 # target_sources(plastic PRIVATE FILE_SET modules TYPE CXX_MODULES FILES renderer.cpp)
 target_sources(plastic PRIVATE main.cpp)
 
-target_link_libraries(plastic PRIVATE Vulkan::Headers glfw glm::glm-header-only)
+target_link_libraries(plastic PRIVATE Vulkan::Headers glfw glm::glm-header-only Vulkan::UtilityHeaders)
 add_dependencies(plastic shader_target)
