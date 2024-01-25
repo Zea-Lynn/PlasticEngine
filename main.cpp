@@ -27,6 +27,10 @@ int main() noexcept {
         Render_State render_state;
         initalize(&render_state, window);
 
+        auto [points, indices] = create_icosphere(1); 
+
+        load_terane_mesh32(&render_state, points.data(), points.size(), indices.data(), indices.size());
+
         glfwSetWindowUserPointer(window, &render_state);
         glfwSetKeyCallback(window, [](GLFWwindow *window, int key, int scancode, int action, int mods) {
                 auto render_state = (Render_State *)glfwGetWindowUserPointer(window);
@@ -37,8 +41,8 @@ int main() noexcept {
 
         glfwSetWindowCloseCallback(window, [](GLFWwindow *window) { exit(0); });
 
-        for (auto i = 0; i < render_state.swapchain_image_count; ++i)
-                record_command_buffers(&render_state, i);
+
+        for (auto i = 0; i < render_state.swapchain_image_count; ++i) record_command_buffers(&render_state, i);
 
         double mouse_start_x = -1, mouse_start_y = -1;
         bool dragging = false;

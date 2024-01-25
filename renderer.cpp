@@ -68,11 +68,10 @@ struct Device_Functions {
         PFN_vkCreateFence vkCreateFence;
         PFN_vkWaitForFences vkWaitForFences;
         PFN_vkResetFences vkResetFences;
-        PFN_vkDestroyFence vkDestroyFence; 
+        PFN_vkDestroyFence vkDestroyFence;
         PFN_vkAcquireNextImageKHR vkAcquireNextImageKHR;
         PFN_vkQueuePresentKHR vkQueuePresentKHR;
         PFN_vkQueueWaitIdle vkQueueWaitIdle;
-
 };
 
 struct Ubo {
@@ -80,19 +79,17 @@ struct Ubo {
         glm::mat4 model;
 };
 
-struct Triangle_Mesh{
-        u32 vertex_count;
+struct Triangle_Mesh {
+        u64 vertex_count;
         VkBuffer vertex_buffer;
         VkDeviceMemory vertex_buffer_memory;
 
-        u32 index_count;
+        u64 index_count;
         VkBuffer index_buffer;
         VkDeviceMemory index_buffer_memory;
 };
 
-struct Line_Mesh{
-
-};
+struct Line_Mesh {};
 
 struct Render_State {
         std::pmr::polymorphic_allocator<u8> allocator;
@@ -109,6 +106,7 @@ struct Render_State {
         PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
         VkPhysicalDevice physical_device;
         VkPhysicalDeviceFeatures physical_device_features;
+        VkPhysicalDeviceMemoryProperties physical_device_memory_properties;
 
         char **enabled_device_extensions;
         u32 device_extension_count;
@@ -126,20 +124,22 @@ struct Render_State {
         VkPipeline graphics_pipeline;
         // TODO: change everything
         u32 vertex_count;
+
+        VkCommandPool command_pool;
         VkBuffer vertex_buffer;
         VkDeviceMemory vertex_buffer_memory;
 
         u32 index_count;
         VkBuffer index_buffer;
         VkDeviceMemory index_buffer_memory;
-        
+
         Line_Mesh bounding_sphere_mesh;
         Line_Mesh debug_mesh;
         Line_Mesh selected_object_mesh;
 
         Triangle_Mesh terrain_mesh;
-        Triangle_Mesh some_entity_mesh;
-
+        u32 opaque_mesh_count;
+        Triangle_Mesh *opaque_meshes;
 
         VkQueue graphics_queue;
         VkQueue present_queue;
@@ -245,7 +245,19 @@ template <typename T> static T load_vulkan_function(VkInstance instance, const c
 
 auto create_basic_graphics_pipeline(Render_State *state) {}
 
-auto initalize(Render_State *state, GLFWwindow *window) {
+constexpr auto find_memory_type(Render_State * state, uint32_t memory_bits_requirement, VkMemoryPropertyFlags properties) noexcept {
+        for (uint32_t memory_type_index = 0; memory_type_index < state->physical_device_memory_properties.memoryTypeCount; ++memory_type_index) {
+                auto memory_properties =state-> physical_device_memory_properties.memoryTypes[memory_type_index];
+                if (memory_bits_requirement & (1 << memory_type_index) and (memory_properties.propertyFlags & properties) == properties) {
+                        return memory_type_index;
+                }
+        }
+
+        puts("unable to find suitable memory index.");
+        exit(420);
+};
+
+auto initalize(Render_State *state, GLFWwindow *window) noexcept {
         puts("initalizeing vulkan render state");
         auto app_info = VkApplicationInfo{
                 .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
@@ -315,7 +327,7 @@ auto initalize(Render_State *state, GLFWwindow *window) {
         auto physical_devices = std::vector<VkPhysicalDevice>(device_count);
         state->instance_functions.vkEnumeratePhysicalDevices(state->instance, &device_count, physical_devices.data());
 
-        //TODO: choose a proper rendering device.
+        // TODO: choose a proper rendering device.
         state->physical_device = physical_devices[0];
 
         auto const [graphics_index, present_index, compute_index] = std::invoke([&] {
@@ -359,6 +371,7 @@ auto initalize(Render_State *state, GLFWwindow *window) {
         char const *device_extensions[1] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 
         state->instance_functions.vkGetPhysicalDeviceFeatures(state->physical_device, &state->physical_device_features);
+        state->instance_functions.vkGetPhysicalDeviceMemoryProperties(state->physical_device, &state->physical_device_memory_properties);
 
         auto const queue_create_infos = std::array{
                 VkDeviceQueueCreateInfo{
@@ -930,17 +943,6 @@ auto initalize(Render_State *state, GLFWwindow *window) {
 
         VkPhysicalDeviceMemoryProperties physical_device_memory_properties;
         state->instance_functions.vkGetPhysicalDeviceMemoryProperties(state->physical_device, &physical_device_memory_properties);
-        auto const find_memory_type = [&physical_device_memory_properties](uint32_t memory_bits_requirement, VkMemoryPropertyFlags properties) noexcept {
-                for (uint32_t memory_type_index = 0; memory_type_index < physical_device_memory_properties.memoryTypeCount; ++memory_type_index) {
-                        auto memory_properties = physical_device_memory_properties.memoryTypes[memory_type_index];
-                        if (memory_bits_requirement & (1 << memory_type_index) and (memory_properties.propertyFlags & properties) == properties) {
-                                return memory_type_index;
-                        }
-                }
-
-                std::puts("unable to find suitable memory index.");
-                std::terminate();
-        };
 
         auto const create_image = [&](VkFormat format, uint32_t mip_levels, VkImageTiling tiling, VkImageUsageFlags usage) {
                 auto const image_info = VkImageCreateInfo{
@@ -1039,13 +1041,12 @@ auto initalize(Render_State *state, GLFWwindow *window) {
         if (not vkCreateCommandPool) {
                 std::exit(30);
         }
-        VkCommandPool command_pool;
         auto const command_pool_create_info = VkCommandPoolCreateInfo{
                 .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
                 .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
                 .queueFamilyIndex = static_cast<uint32_t>(graphics_index),
         };
-        if (vkCreateCommandPool(state->device, &command_pool_create_info, state->vulkan_allocator, &command_pool) not_eq VK_SUCCESS) {
+        if (vkCreateCommandPool(state->device, &command_pool_create_info, state->vulkan_allocator, &state->command_pool) not_eq VK_SUCCESS) {
                 std::puts("unable to create command pool.");
                 std::exit(40202);
         }
@@ -1067,7 +1068,7 @@ auto initalize(Render_State *state, GLFWwindow *window) {
                 auto const buffer_memory_alloc_info = VkMemoryAllocateInfo{
                         .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
                         .allocationSize = buffer_memory_requirements.size,
-                        .memoryTypeIndex = find_memory_type(buffer_memory_requirements.memoryTypeBits, memory_properties),
+                        .memoryTypeIndex = find_memory_type(state, buffer_memory_requirements.memoryTypeBits, memory_properties),
                 };
                 vkAllocateMemory(state->device, &buffer_memory_alloc_info, state->vulkan_allocator, buffer_memory);
                 vkBindBufferMemory(state->device, *buffer, *buffer_memory, 0);
@@ -1076,7 +1077,7 @@ auto initalize(Render_State *state, GLFWwindow *window) {
         auto const buffer_copy = [&](VkBuffer src_buffer, VkBuffer dst_buffer, VkDeviceSize size) {
                 auto const command_buffer_allocate_info = VkCommandBufferAllocateInfo{
                         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-                        .commandPool = command_pool,
+                        .commandPool = state->command_pool,
                         .level = VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_PRIMARY,
                         .commandBufferCount = 1,
                 };
@@ -1202,7 +1203,7 @@ auto initalize(Render_State *state, GLFWwindow *window) {
 
         auto const command_buffer_allocate_info = VkCommandBufferAllocateInfo{
                 .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-                .commandPool = command_pool,
+                .commandPool = state->command_pool,
                 .level = VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_PRIMARY,
                 .commandBufferCount = static_cast<uint32_t>(state->swapchain_image_count),
         };
@@ -1234,7 +1235,7 @@ auto initalize(Render_State *state, GLFWwindow *window) {
                         .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
                         .flags = VkFenceCreateFlagBits::VK_FENCE_CREATE_SIGNALED_BIT,
                 };
-                if (vkCreateFence(state->device, &fence_create_info, state->vulkan_allocator, &state->image_in_flieght_fences[i]) not_eq VK_SUCCESS){
+                if (vkCreateFence(state->device, &fence_create_info, state->vulkan_allocator, &state->image_in_flieght_fences[i]) not_eq VK_SUCCESS) {
                         std::exit(765987);
                 }
         }
@@ -1244,7 +1245,110 @@ auto initalize(Render_State *state, GLFWwindow *window) {
         state->device_functions.vkDeviceWaitIdle(state->device);
 }
 
-void record_command_buffers(Render_State const *state, u32 swapchain_image_index) {
+constexpr auto buffer_copy(Render_State * state, VkBuffer src_buffer, VkBuffer dst_buffer, VkDeviceSize size) {
+        auto const command_buffer_allocate_info = VkCommandBufferAllocateInfo{
+                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+                .commandPool = state->command_pool,
+                .level = VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+                .commandBufferCount = 1,
+        };
+        VkCommandBuffer copy_command_buffer;
+        if (state->device_functions.vkAllocateCommandBuffers(state->device, &command_buffer_allocate_info, &copy_command_buffer) not_eq VK_SUCCESS) {
+                std::puts("unable to allocate command buffers");
+                std::exit(420);
+        }
+
+        auto const begin_info = VkCommandBufferBeginInfo{.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+
+        state->device_functions.vkBeginCommandBuffer(copy_command_buffer, &begin_info);
+
+        auto region = VkBufferCopy{.size = size};
+        state->device_functions.vkCmdCopyBuffer(copy_command_buffer, src_buffer, dst_buffer, 1, &region);
+
+        state->device_functions.vkEndCommandBuffer(copy_command_buffer);
+
+        auto submit_info = VkSubmitInfo{
+                .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+                .commandBufferCount = 1,
+                .pCommandBuffers = &copy_command_buffer,
+        };
+
+        state->device_functions.vkQueueSubmit(state->graphics_queue, 1, &submit_info, nullptr);
+        state->device_functions.vkDeviceWaitIdle(state->device);
+};
+
+
+constexpr auto create_buffer(Render_State *state, VkBufferUsageFlags usage, VkMemoryPropertyFlags memory_properties, VkDeviceSize size, VkBuffer *buffer, VkDeviceMemory *buffer_memory) noexcept {
+        auto const buffer_create_info = VkBufferCreateInfo{
+                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                .size = size,
+                .usage = usage,
+                .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        };
+        state->device_functions.vkCreateBuffer(state->device, &buffer_create_info, state->vulkan_allocator, buffer);
+
+        VkMemoryRequirements buffer_memory_requirements;
+        state->device_functions.vkGetBufferMemoryRequirements(state->device, *buffer, &buffer_memory_requirements);
+
+        auto const buffer_memory_alloc_info = VkMemoryAllocateInfo{
+                .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+                .allocationSize = buffer_memory_requirements.size,
+                .memoryTypeIndex = find_memory_type(state, buffer_memory_requirements.memoryTypeBits, memory_properties),
+        };
+        state->device_functions.vkAllocateMemory(state->device, &buffer_memory_alloc_info, state->vulkan_allocator, buffer_memory);
+        state->device_functions.vkBindBufferMemory(state->device, *buffer, *buffer_memory, 0);
+};
+
+template <typename T> constexpr auto stage_and_copy_buffer(Render_State *state, T *data, u64 size, VkBufferUsageFlags usage) noexcept{
+        auto const buffer_size = size * sizeof(T);
+        VkDeviceMemory staging_memory;
+        VkBuffer staging_buffer;
+        create_buffer(state, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | usage, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, buffer_size, &staging_buffer, &staging_memory);
+
+        void *buffer_data_staging_memory;
+        state->device_functions.vkMapMemory(state->device, staging_memory, 0, buffer_size, 0, &buffer_data_staging_memory);
+        std::memcpy(buffer_data_staging_memory, data, buffer_size);
+        state->device_functions.vkUnmapMemory(state->device, staging_memory);
+
+        VkDeviceMemory buffer_memory;
+        VkBuffer buffer;
+        create_buffer(state, VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, buffer_size, &buffer, &buffer_memory);
+        buffer_copy(state, staging_buffer, buffer, buffer_size);
+
+        struct {
+                VkDeviceMemory memory;
+                VkBuffer buffer;
+        } buffer_handle_and_memory{buffer_memory, buffer};
+        return buffer_handle_and_memory;
+};
+
+constexpr auto load_terane_mesh32(Render_State * state, glm::vec3 * vertices, u32 vertex_count, u32 * indices, u32 index_count)noexcept{
+        auto [vertex_memory, vertex_buffer] = stage_and_copy_buffer(state, vertices, vertex_count, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+        auto [index_memory, index_buffer] = stage_and_copy_buffer(state, indices, index_count, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+        state->terrain_mesh = Triangle_Mesh{
+                .vertex_count = vertex_count,
+                .vertex_buffer = vertex_buffer,
+                .vertex_buffer_memory = vertex_memory,
+                .index_count = index_count,
+                .index_buffer = index_buffer,
+                .index_buffer_memory = index_memory,
+        };
+}
+
+constexpr auto load_terane_mesh64(Render_State * state, glm::vec3 * vertices, u64 vertex_count, u64 * indices, u64 index_count)noexcept{
+        auto [vertex_memory, vertex_buffer] = stage_and_copy_buffer(state, vertices, vertex_count, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+        auto [index_memory, index_buffer] = stage_and_copy_buffer(state, vertices, vertex_count, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+        state->terrain_mesh = Triangle_Mesh{
+                .vertex_count = vertex_count,
+                .vertex_buffer = vertex_buffer,
+                .vertex_buffer_memory = vertex_memory,
+                .index_count = index_count,
+                .index_buffer = index_buffer,
+                .index_buffer_memory = index_memory,
+        };
+}
+
+constexpr void record_command_buffers(Render_State const *state, u32 swapchain_image_index) noexcept {
         auto const clear_values = std::array{
                 VkClearValue{.color = VkClearColorValue{.float32 = {1, 0, 1, 0}}},
                 VkClearValue{.depthStencil = VkClearDepthStencilValue{.depth = 1, .stencil = 0}},
@@ -1278,14 +1382,14 @@ void record_command_buffers(Render_State const *state, u32 swapchain_image_index
         state->device_functions.vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, state->graphics_pipeline);
 
         VkDeviceSize offsets = 0;
-        state->device_functions.vkCmdBindVertexBuffers(command_buffer, 0, 1, &state->vertex_buffer, &offsets);
-        state->device_functions.vkCmdBindIndexBuffer(command_buffer, state->index_buffer, 0, VkIndexType::VK_INDEX_TYPE_UINT32);
+        state->device_functions.vkCmdBindVertexBuffers(command_buffer, 0, 1, &state->terrain_mesh.vertex_buffer, &offsets);
+        state->device_functions.vkCmdBindIndexBuffer(command_buffer, state->terrain_mesh.index_buffer, 0, VkIndexType::VK_INDEX_TYPE_UINT32);
 
         state->device_functions.vkCmdBindDescriptorSets(command_buffer, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, state->pipeline_layout, 0, 1, &state->uniform_descriptor_set, 0, nullptr);
         // state->device_functions.vkCmdPushConstants(command_buffer, state->pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Ubo), &state->ubo);
 
         // TODO: bind a freaking defffered draw buffer thingamajig or mesh shader drawer thingy.
-        state->device_functions.vkCmdDrawIndexed(command_buffer, state->index_count, 1, 0, 0, 0);
+        state->device_functions.vkCmdDrawIndexed(command_buffer, state->terrain_mesh.index_count, 1, 0, 0, 0);
         state->device_functions.vkCmdEndRenderPass(command_buffer);
         state->device_functions.vkEndCommandBuffer(command_buffer);
 }
