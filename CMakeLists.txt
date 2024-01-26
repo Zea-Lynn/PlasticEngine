@@ -6,9 +6,6 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_FLAGS "-O0 -g")
 set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 set(CMAKE_BUILD_TYPE=Debug)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 
 
 set(VERT_SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/shader.vert")
@@ -34,6 +31,9 @@ add_subdirectory("Vulkan-Utility-Libraries")
 
 add_executable(plastic)
 # TODO: modules when they work.
+# set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# set(CMAKE_CXX_EXTENSIONS OFF)
+# set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 # target_sources(plastic PRIVATE FILE_SET modules TYPE CXX_MODULES FILES renderer.cpp)
 target_sources(plastic PRIVATE main.cpp)
 
