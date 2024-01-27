@@ -12,8 +12,9 @@
 #include <thread>
 #include <vector>
 
-#include <vulkan/vk_enum_string_helper.h>
 #include <vulkan/vulkan_core.h>
+#include <vulkan/vk_enum_string_helper.h>
+#include <vulkan/utility/vk_struct_helper.hpp>
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>

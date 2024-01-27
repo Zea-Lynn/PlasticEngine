@@ -4,6 +4,7 @@
 #include "includes.h"
 #include "mesh.cpp"
 
+
 constexpr s64 max_frames_in_flieght = 2;
 
 struct Instance_Functions {
@@ -260,7 +261,7 @@ constexpr auto find_memory_type(Render_State * state, uint32_t memory_bits_requi
 auto initalize(Render_State *state, GLFWwindow *window) noexcept {
         puts("initalizeing vulkan render state");
         auto app_info = VkApplicationInfo{
-                .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
+                .sType = vku::GetSType<VkApplicationInfo>(),
                 .pNext = nullptr,
                 .pApplicationName = "plastic",
                 .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
@@ -281,7 +282,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
 
         std::vector<char const *> layer_names = {"VK_LAYER_KHRONOS_validation"};
         auto instantce_info = VkInstanceCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+                .sType = vku::GetSType<VkInstanceCreateInfo>(),
                 .pNext = nullptr,
                 .flags = {},
                 .pApplicationInfo = &app_info,
@@ -299,7 +300,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
         state->vkGetInstanceProcAddr = load_vulkan_function<PFN_vkGetInstanceProcAddr>(state->instance, "vkGetInstanceProcAddr");
         load_instance_functions(state);
         auto debug_messenger_info = VkDebugUtilsMessengerCreateInfoEXT{
-                .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+                .sType = vku::GetSType<VkDebugUtilsMessengerCreateInfoEXT>(),
                 .pNext = nullptr,
                 .flags = {},
                 .messageSeverity = /* VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | */ VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
@@ -375,7 +376,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
 
         auto const queue_create_infos = std::array{
                 VkDeviceQueueCreateInfo{
-                        .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+                        .sType = vku::GetSType<VkDeviceQueueCreateInfo>(),
                         .pNext = nullptr,
                         .flags = {},
                         .queueFamilyIndex = static_cast<uint32_t>(graphics_index),
@@ -385,7 +386,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
         };
 
         auto const device_create_info = VkDeviceCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+                .sType = vku::GetSType<VkDeviceCreateInfo>(),
                 .pNext = nullptr,
                 .flags = {},
                 .queueCreateInfoCount = queue_create_infos.size(),
@@ -498,7 +499,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
         }
 
         auto const swapchain_create_info = VkSwapchainCreateInfoKHR{
-                .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+                .sType = vku::GetSType<VkSwapchainCreateInfoKHR>(),
                 .pNext = nullptr,
                 .flags = {},
                 .surface = state->window_surface,
@@ -540,7 +541,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
                         .layerCount = 1,
                 };
                 auto const image_view_create_info = VkImageViewCreateInfo{
-                        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+                        .sType = vku::GetSType<VkImageViewCreateInfo>(),
                         .pNext = nullptr,
                         .flags = {},
                         .image = swapchain_images[i],
@@ -633,7 +634,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
         };
 
         auto const render_pass_create_info = VkRenderPassCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+                .sType = vku::GetSType<VkRenderPassCreateInfo>(),
                 .pNext = nullptr,
                 .flags = {},
                 .attachmentCount = attachemnts.size(),
@@ -660,7 +661,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
                 file.read(buffer.data(), fileSize);
                 std::puts(std::format("loading shader {} with bytecount {}", path.string(), buffer.size()).c_str());
                 auto const shader_module_create_info = VkShaderModuleCreateInfo{
-                        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+                        .sType = vku::GetSType<VkShaderModuleCreateInfo>(),
                         .pNext = nullptr,
                         .flags = {},
                         .codeSize = buffer.size(),
@@ -676,7 +677,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
 
         auto const vertex_shader_module = create_shader_module("shader.vert.spv");
         auto const vertex_shader_stage_create_info = VkPipelineShaderStageCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                .sType = vku::GetSType<VkPipelineShaderStageCreateInfo>(),
                 .pNext = nullptr,
                 .flags = {},
                 .stage = VK_SHADER_STAGE_VERTEX_BIT,
@@ -686,7 +687,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
 
         auto const fragment_shader_module = create_shader_module("shader.frag.spv");
         auto const fragment_shader_stage_create_info = VkPipelineShaderStageCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                .sType = vku::GetSType<VkPipelineShaderStageCreateInfo>(),
                 .pNext = nullptr,
                 .flags = {},
                 .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
@@ -743,7 +744,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
         };
 
         auto const vertex_input_info = VkPipelineVertexInputStateCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+                .sType = vku::GetSType<VkPipelineVertexInputStateCreateInfo>(),
                 .pNext = nullptr,
                 .flags = {},
                 .vertexBindingDescriptionCount = vertex_binding_dexcriptions.size(),
@@ -753,7 +754,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
         };
 
         auto const input_assembly_info = VkPipelineInputAssemblyStateCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+                .sType = vku::GetSType<VkPipelineInputAssemblyStateCreateInfo>(),
                 .pNext = nullptr,
                 .flags = {},
                 .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
@@ -775,7 +776,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
         };
 
         auto const viewport_state_info = VkPipelineViewportStateCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+                .sType = vku::GetSType<VkPipelineViewportStateCreateInfo>(),
                 .pNext = nullptr,
                 .flags = {},
                 .viewportCount = 1,
@@ -785,7 +786,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
         };
 
         auto const rasterizer = VkPipelineRasterizationStateCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+                .sType = vku::GetSType<VkPipelineRasterizationStateCreateInfo>(),
                 .pNext = nullptr,
                 .flags = {},
                 .depthClampEnable = VK_FALSE,
@@ -800,7 +801,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
         };
 
         auto const multisampling = VkPipelineMultisampleStateCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+                .sType = vku::GetSType<VkPipelineMultisampleStateCreateInfo>(),
                 .pNext = nullptr,
                 .flags = {},
                 .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
@@ -823,7 +824,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
         };
 
         auto const color_blending = VkPipelineColorBlendStateCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+                .sType = vku::GetSType<VkPipelineColorBlendStateCreateInfo>(),
                 .pNext = nullptr,
                 .flags = {},
                 .logicOpEnable = VK_FALSE,
@@ -839,7 +840,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
         };
 
         auto const dynamic_state = VkPipelineDynamicStateCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+                .sType = vku::GetSType<VkPipelineDynamicStateCreateInfo>(),
                 .pNext = nullptr,
                 .flags = {},
                 .dynamicStateCount = dynamic_states.size(),
@@ -847,7 +848,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
         };
 
         auto const depth_stencil = VkPipelineDepthStencilStateCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+                .sType = vku::GetSType<VkPipelineDepthStencilStateCreateInfo>(),
                 .pNext = nullptr,
                 .flags = {},
                 .depthTestEnable = VK_TRUE,
@@ -883,7 +884,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
         };
 
         auto const descriptor_set_info = VkDescriptorSetLayoutCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                .sType = vku::GetSType<VkDescriptorSetLayoutCreateInfo>(),
                 .pNext = nullptr,
                 .flags = {},
                 .bindingCount = descriptor_set_bindings.size(),
@@ -903,7 +904,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
         };
 
         auto const pipeline_layout_info = VkPipelineLayoutCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+                .sType = vku::GetSType<VkPipelineLayoutCreateInfo>(),
                 .pNext = nullptr,
                 .flags = {},
                 .setLayoutCount = 1,
@@ -919,7 +920,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
         }
 
         auto const pipeline_create_info = VkGraphicsPipelineCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+                .sType = vku::GetSType<VkGraphicsPipelineCreateInfo>(),
                 .pNext = nullptr,
                 .flags = {},
                 .stageCount = shader_stages.size(),
@@ -946,7 +947,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
 
         auto const create_image = [&](VkFormat format, uint32_t mip_levels, VkImageTiling tiling, VkImageUsageFlags usage) {
                 auto const image_info = VkImageCreateInfo{
-                        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+                        .sType = vku::GetSType<VkImageCreateInfo>(),
                         .imageType = VK_IMAGE_TYPE_2D,
                         .format = format,
                         .extent = VkExtent3D{static_cast<uint32_t>(window_width), static_cast<uint32_t>(window_height), 1},
@@ -1001,7 +1002,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
         //         .layerCount = 1,
         // };
         // auto const depth_image_view_create_info = VkImageViewCreateInfo{
-        //         .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        //         .sType = vku::GetSType<VkImageViewCreateInfo>(),
         //         .pNext = nullptr,
         //         .flags = {},
         //         .image = depth_image,
@@ -1024,7 +1025,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
                 };
 
                 auto const creat_info = VkFramebufferCreateInfo{
-                        .sType = VkStructureType::VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+                        .sType = vku::GetSType<VkFramebufferCreateInfo>(),
                         .flags = {},
                         .renderPass = state->render_pass,
                         .attachmentCount = attachments.size(),
@@ -1042,7 +1043,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
                 std::exit(30);
         }
         auto const command_pool_create_info = VkCommandPoolCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+                .sType = vku::GetSType<VkCommandPoolCreateInfo>(),
                 .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
                 .queueFamilyIndex = static_cast<uint32_t>(graphics_index),
         };
@@ -1055,7 +1056,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
 
         auto const create_buffer = [&](VkBufferUsageFlags usage, VkMemoryPropertyFlags memory_properties, VkDeviceSize size, VkBuffer *buffer, VkDeviceMemory *buffer_memory) noexcept {
                 auto const buffer_create_info = VkBufferCreateInfo{
-                        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                        .sType = vku::GetSType<VkBufferCreateInfo>(),
                         .size = size,
                         .usage = usage,
                         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
@@ -1066,7 +1067,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
                 vkGetBufferMemoryRequirements(state->device, *buffer, &buffer_memory_requirements);
 
                 auto const buffer_memory_alloc_info = VkMemoryAllocateInfo{
-                        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+                        .sType = vku::GetSType<VkMemoryAllocateInfo>(),
                         .allocationSize = buffer_memory_requirements.size,
                         .memoryTypeIndex = find_memory_type(state, buffer_memory_requirements.memoryTypeBits, memory_properties),
                 };
@@ -1076,7 +1077,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
 
         auto const buffer_copy = [&](VkBuffer src_buffer, VkBuffer dst_buffer, VkDeviceSize size) {
                 auto const command_buffer_allocate_info = VkCommandBufferAllocateInfo{
-                        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+                        .sType = vku::GetSType<VkCommandBufferAllocateInfo>(),
                         .commandPool = state->command_pool,
                         .level = VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_PRIMARY,
                         .commandBufferCount = 1,
@@ -1087,7 +1088,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
                         std::exit(420);
                 }
 
-                auto const begin_info = VkCommandBufferBeginInfo{.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+                auto const begin_info = VkCommandBufferBeginInfo{.sType = vku::GetSType<VkCommandBufferBeginInfo>()};
 
                 vkBeginCommandBuffer(copy_command_buffer, &begin_info);
 
@@ -1097,7 +1098,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
                 vkEndCommandBuffer(copy_command_buffer);
 
                 auto submit_info = VkSubmitInfo{
-                        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+                        .sType = vku::GetSType<VkSubmitInfo>(),
                         .commandBufferCount = 1,
                         .pCommandBuffers = &copy_command_buffer,
                 };
@@ -1157,7 +1158,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
 
         auto const uniform_descriptor_pool_size = VkDescriptorPoolSize{.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount = max_frames_in_flieght};
         auto const uniform_descriptor_pool_create_info = VkDescriptorPoolCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+                .sType = vku::GetSType<VkDescriptorPoolCreateInfo>(),
                 .maxSets = max_frames_in_flieght,
                 .poolSizeCount = 1,
                 .pPoolSizes = &uniform_descriptor_pool_size,
@@ -1170,7 +1171,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
         }
 
         auto const descripotor_set_allocaiton_info = VkDescriptorSetAllocateInfo{
-                .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                .sType = vku::GetSType<VkDescriptorSetAllocateInfo>(),
                 .descriptorPool = uniform_descriptor_pool,
                 .descriptorSetCount = 1,
                 .pSetLayouts = &descriptor_set_layout,
@@ -1188,7 +1189,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
         };
 
         auto const write_descriptor = VkWriteDescriptorSet{
-                .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                .sType = vku::GetSType<VkWriteDescriptorSet>(),
                 .dstSet = state->uniform_descriptor_set,
                 .dstBinding = 0,
                 .dstArrayElement = 0,
@@ -1202,7 +1203,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
         state->device_functions.vkUpdateDescriptorSets(state->device, 1, &write_descriptor, 0, nullptr);
 
         auto const command_buffer_allocate_info = VkCommandBufferAllocateInfo{
-                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+                .sType = vku::GetSType<VkCommandBufferAllocateInfo>(),
                 .commandPool = state->command_pool,
                 .level = VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_PRIMARY,
                 .commandBufferCount = static_cast<uint32_t>(state->swapchain_image_count),
@@ -1225,14 +1226,12 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
         state->image_in_flieght_fences = state->allocator.allocate_object<VkFence>(state->swapchain_image_count);
         for (auto i = 0; i < max_frames_in_flieght; ++i) {
                 auto empty_semaphore_create_info = VkSemaphoreCreateInfo{
-                        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+                        .sType = vku::GetSType<VkSemaphoreCreateInfo>(),
                 };
-                if (vkCreateSemaphore(state->device, &empty_semaphore_create_info, state->vulkan_allocator, &state->image_available_semaphores[i]) not_eq VK_SUCCESS)
-                        std::exit(3939);
-                if (vkCreateSemaphore(state->device, &empty_semaphore_create_info, state->vulkan_allocator, &state->render_finished_semaphores[i]) not_eq VK_SUCCESS)
-                        std::exit(3939);
+                if (vkCreateSemaphore(state->device, &empty_semaphore_create_info, state->vulkan_allocator, &state->image_available_semaphores[i]) not_eq VK_SUCCESS) std::exit(3939);
+                if (vkCreateSemaphore(state->device, &empty_semaphore_create_info, state->vulkan_allocator, &state->render_finished_semaphores[i]) not_eq VK_SUCCESS) std::exit(3939);
                 auto fence_create_info = VkFenceCreateInfo{
-                        .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+                        .sType = vku::GetSType<VkFenceCreateInfo>(),
                         .flags = VkFenceCreateFlagBits::VK_FENCE_CREATE_SIGNALED_BIT,
                 };
                 if (vkCreateFence(state->device, &fence_create_info, state->vulkan_allocator, &state->image_in_flieght_fences[i]) not_eq VK_SUCCESS) {
@@ -1247,7 +1246,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
 
 constexpr auto buffer_copy(Render_State * state, VkBuffer src_buffer, VkBuffer dst_buffer, VkDeviceSize size) {
         auto const command_buffer_allocate_info = VkCommandBufferAllocateInfo{
-                .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+                .sType = vku::GetSType<VkCommandBufferAllocateInfo>(),
                 .commandPool = state->command_pool,
                 .level = VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_PRIMARY,
                 .commandBufferCount = 1,
@@ -1258,7 +1257,7 @@ constexpr auto buffer_copy(Render_State * state, VkBuffer src_buffer, VkBuffer d
                 std::exit(420);
         }
 
-        auto const begin_info = VkCommandBufferBeginInfo{.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+        auto const begin_info = VkCommandBufferBeginInfo{.sType = vku::GetSType<VkCommandBufferBeginInfo>()};
 
         state->device_functions.vkBeginCommandBuffer(copy_command_buffer, &begin_info);
 
@@ -1268,7 +1267,7 @@ constexpr auto buffer_copy(Render_State * state, VkBuffer src_buffer, VkBuffer d
         state->device_functions.vkEndCommandBuffer(copy_command_buffer);
 
         auto submit_info = VkSubmitInfo{
-                .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+                .sType = vku::GetSType<VkSubmitInfo>(),
                 .commandBufferCount = 1,
                 .pCommandBuffers = &copy_command_buffer,
         };
@@ -1280,7 +1279,7 @@ constexpr auto buffer_copy(Render_State * state, VkBuffer src_buffer, VkBuffer d
 
 constexpr auto create_buffer(Render_State *state, VkBufferUsageFlags usage, VkMemoryPropertyFlags memory_properties, VkDeviceSize size, VkBuffer *buffer, VkDeviceMemory *buffer_memory) noexcept {
         auto const buffer_create_info = VkBufferCreateInfo{
-                .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                .sType = vku::GetSType<VkBufferCreateInfo>(),
                 .size = size,
                 .usage = usage,
                 .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
@@ -1291,7 +1290,7 @@ constexpr auto create_buffer(Render_State *state, VkBufferUsageFlags usage, VkMe
         state->device_functions.vkGetBufferMemoryRequirements(state->device, *buffer, &buffer_memory_requirements);
 
         auto const buffer_memory_alloc_info = VkMemoryAllocateInfo{
-                .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+                .sType = vku::GetSType<VkMemoryAllocateInfo>(),
                 .allocationSize = buffer_memory_requirements.size,
                 .memoryTypeIndex = find_memory_type(state, buffer_memory_requirements.memoryTypeBits, memory_properties),
         };
@@ -1362,13 +1361,13 @@ constexpr void record_command_buffers(Render_State const *state, u32 swapchain_i
         auto &frame_buffer = state->frame_buffers[swapchain_image_index];
 
         auto const command_buffer_begin_info = VkCommandBufferBeginInfo{
-                .sType = VkStructureType::VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+                .sType = vku::GetSType<VkCommandBufferBeginInfo>(),
         };
 
         state->device_functions.vkBeginCommandBuffer(command_buffer, &command_buffer_begin_info);
 
         auto const render_pass_begin_info = VkRenderPassBeginInfo{
-                .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+                .sType = vku::GetSType<VkRenderPassBeginInfo>(),
                 .renderPass = state->render_pass,
                 .framebuffer = frame_buffer,
                 .renderArea = VkRect2D{.offset{0, 0}, .extent = state->swapchain_extent},
@@ -1421,7 +1420,7 @@ auto draw_frame(Render_State *state) {
 
         VkPipelineStageFlags wait_dst_stage_mask = VkPipelineStageFlagBits::VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         auto const submit_info = VkSubmitInfo{
-                .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+                .sType = vku::GetSType<VkSubmitInfo>(),
                 .waitSemaphoreCount = 1,
                 .pWaitSemaphores = &image_available_semaphore,
                 .pWaitDstStageMask = &wait_dst_stage_mask,
@@ -1434,7 +1433,7 @@ auto draw_frame(Render_State *state) {
         state->device_functions.vkQueueSubmit(state->graphics_queue, 1, &submit_info, image_in_flieght_fence);
 
         auto const present_info = VkPresentInfoKHR{
-                .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+                .sType = vku::GetSType<VkPresentInfoKHR>(),
                 .pNext = nullptr,
                 .waitSemaphoreCount = 1,
                 .pWaitSemaphores = &render_finished_semaphore,
