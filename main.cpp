@@ -1,5 +1,6 @@
 
 #include "includes.h"
+#include "mesh.cpp"
 #include "renderer.cpp"
 
 int main() noexcept {
@@ -27,9 +28,15 @@ int main() noexcept {
         Render_State render_state;
         initalize(&render_state, window);
 
-        auto [points, indices] = create_icosphere(1); 
 
-        load_terane_mesh32(&render_state, points.data(), points.size(), indices.data(), indices.size());
+        {
+                auto [points, indices] = create_platform();
+                render_state.terrain_mesh = load_mesh32(&render_state, points, 4, indices, 6);
+        }
+        {
+                auto [points, indices] = create_icosphere(); 
+                render_state.player_mesh = load_mesh32(&render_state, points.data(), points.size(), indices.data(), indices.size());
+        }
 
         glfwSetWindowUserPointer(window, &render_state);
         glfwSetKeyCallback(window, [](GLFWwindow *window, int key, int scancode, int action, int mods) {
@@ -41,12 +48,11 @@ int main() noexcept {
 
         glfwSetWindowCloseCallback(window, [](GLFWwindow *window) { exit(0); });
 
-
         for (auto i = 0; i < render_state.swapchain_image_count; ++i) record_command_buffers(&render_state, i);
 
         double mouse_start_x = -1, mouse_start_y = -1;
 
-        auto const view = glm::lookAt(glm::vec3(5.0f, 5.0f, 5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        auto const view = glm::lookAt(glm::vec3(5.0f, 5.0f, 5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 100.0f));
         auto const projection = glm::perspective(glm::radians(45.0f), render_state.swapchain_extent.width / (float)render_state.swapchain_extent.height, 0.1f, 10.0f);
         auto const camera_u = render_state.ubo.camera * glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
         auto const camera_v = render_state.ubo.camera * glm::vec4(0.0f, 1.0f, 0.0f, 1.0f);
@@ -85,11 +91,11 @@ int main() noexcept {
                 }else if(mouse_state == GLFW_RELEASE and dragging){
                         dragging = false;
                         rotation_offset += x_offset;
-                        start_time = std::chrono::high_resolution_clock::now();
+                        // start_time = std::chrono::high_resolution_clock::now();
                 }else{
-                        auto current_time = std::chrono::high_resolution_clock::now();
-                        rotation_offset = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
-                        render_state.ubo.model = glm::rotate(glm::mat4(1.0f), rotation_offset * glm::radians(180.0f), glm::vec3(1,0,0));
+                        // auto current_time = std::chrono::high_resolution_clock::now();
+                        // rotation_offset = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
+                        // render_state.ubo.model = glm::rotate(glm::mat4(1.0f), rotation_offset * glm::radians(180.0f), glm::vec3(1,0,0));
                 }
 
 

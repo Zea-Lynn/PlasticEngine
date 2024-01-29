@@ -2,7 +2,7 @@
 #include "includes.h"
 #pragma once
 
-auto create_icosahedron() {
+auto create_d20() {
         struct {
                 glm::vec3 vertcies[12];
                 u32 indices[20 * 3];
@@ -100,15 +100,14 @@ auto midpoint(glm::vec3 a, glm::vec3 b) {
 auto sqrt3_subdivide(auto mesh){
 }
 
-auto create_icosphere(u64 subdivisions) {
-        auto bla = create_icosahedron();
+auto create_icosphere() {
+        auto bla = create_d20();
         struct {
                 std::vector<glm::vec3> points;
                 std::vector<u32> indices;
         } sphere{.points = std::vector(bla.vertcies, bla.vertcies + 12), .indices = std::vector(bla.indices, bla.indices + 60)};
         // for (auto &&point : sphere.points) point = glm::normalize(point);
 
-        for (auto i = 0; i < subdivisions; ++i) {
                 std::vector<glm::vec3> midpoints;
                 auto midpoints_by_point = std::vector<std::array<s32, 5>>(sphere.points.size(), {-1, -1, -1, -1, -1});
                 auto counts_of_midpoints_by_point = std::vector<u32>(sphere.points.size(), 0);
@@ -196,6 +195,14 @@ auto create_icosphere(u64 subdivisions) {
 
                 sphere.indices = indices;
                 sphere.points = points;
-        }
         return sphere;
+}
+
+auto create_platform(){
+        struct{
+                glm::vec3 points[4]{{-10,0,-10}, {10,0,-10}, {-10,0,10}, {10,0,10}};
+                u32 indices[6]{0,2,1,1,2,3};
+        } platform;
+
+        return platform;
 }

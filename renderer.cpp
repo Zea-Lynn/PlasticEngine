@@ -120,6 +120,7 @@ struct Render_State {
         u32 swapchain_image_count;
         VkRenderPass render_pass;
         VkViewport viewport;
+        VkDescriptorSet terrain_descriptor_set;
         VkDescriptorSet uniform_descriptor_set;
         VkPipelineLayout pipeline_layout;
         VkPipeline graphics_pipeline;
@@ -139,6 +140,7 @@ struct Render_State {
         Line_Mesh selected_object_mesh;
 
         Triangle_Mesh terrain_mesh;
+        Triangle_Mesh player_mesh;
         u32 opaque_mesh_count;
         Triangle_Mesh *opaque_meshes;
 
@@ -645,8 +647,6 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
                 .pDependencies = &subpass_dependency,
         };
 
-        if (not vkCreateRenderPass)
-                exit(123);
         if (vkCreateRenderPass(state->device, &render_pass_create_info, state->vulkan_allocator, &state->render_pass) not_eq VK_SUCCESS) {
                 std::puts("unable to create render pass");
                 std::exit(1);
@@ -1130,7 +1130,6 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
                 return buffer_handle_and_memory;
         };
 
-        auto [vertices, indices] = create_icosphere(1);
 
         // auto vertices = std::vector<vertex_position>{
         //         vertex_position{.9, .9, 0},
@@ -1139,16 +1138,16 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
         //         vertex_position{-.9, -.9, 0},
         // };
         // auto vertices = std::vector(ico_vertices, ico_vertices+ 12);
-        auto const [vertex_memory, vertex_buffer] = stage_and_copy_buffer(vertices, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-        state->vertex_buffer = vertex_buffer;
-        state->vertex_buffer_memory = vertex_memory;
+        // auto const [vertex_memory, vertex_buffer] = stage_and_copy_buffer(vertices, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+        // state->vertex_buffer = vertex_buffer;
+        // state->vertex_buffer_memory = vertex_memory;
 
         // auto indices = std::vector<uint32_t>{2, 1, 3, 0, 1, 2};
         // auto indices = std::vector(ico_indices, ico_indices+60);
-        auto const [index_memory, index_buffer] = stage_and_copy_buffer(indices, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-        state->index_count = indices.size();
-        state->index_buffer = index_buffer;
-        state->index_buffer_memory = index_memory;
+        // auto const [index_memory, index_buffer] = stage_and_copy_buffer(indices, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+        // state->index_count = indices.size();
+        // state->index_buffer = index_buffer;
+        // state->index_buffer_memory = index_memory;
 
         auto const ubo_buffer_size = sizeof(Ubo);
         VkBuffer staging_ubo_buffer;
@@ -1244,7 +1243,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
         state->device_functions.vkDeviceWaitIdle(state->device);
 }
 
-constexpr auto buffer_copy(Render_State * state, VkBuffer src_buffer, VkBuffer dst_buffer, VkDeviceSize size) {
+inline auto buffer_copy(Render_State * state, VkBuffer src_buffer, VkBuffer dst_buffer, VkDeviceSize size) {
         auto const command_buffer_allocate_info = VkCommandBufferAllocateInfo{
                 .sType = vku::GetSType<VkCommandBufferAllocateInfo>(),
                 .commandPool = state->command_pool,
@@ -1276,8 +1275,7 @@ constexpr auto buffer_copy(Render_State * state, VkBuffer src_buffer, VkBuffer d
         state->device_functions.vkDeviceWaitIdle(state->device);
 };
 
-
-constexpr auto create_buffer(Render_State *state, VkBufferUsageFlags usage, VkMemoryPropertyFlags memory_properties, VkDeviceSize size, VkBuffer *buffer, VkDeviceMemory *buffer_memory) noexcept {
+inline auto create_buffer(Render_State *state, VkBufferUsageFlags usage, VkMemoryPropertyFlags memory_properties, VkDeviceSize size, VkBuffer *buffer, VkDeviceMemory *buffer_memory) noexcept {
         auto const buffer_create_info = VkBufferCreateInfo{
                 .sType = vku::GetSType<VkBufferCreateInfo>(),
                 .size = size,
@@ -1321,10 +1319,10 @@ template <typename T> constexpr auto stage_and_copy_buffer(Render_State *state, 
         return buffer_handle_and_memory;
 };
 
-constexpr auto load_terane_mesh32(Render_State * state, glm::vec3 * vertices, u32 vertex_count, u32 * indices, u32 index_count)noexcept{
+constexpr auto load_mesh32(Render_State * state, glm::vec3 * vertices, u32 vertex_count, u32 * indices, u32 index_count) noexcept{
         auto [vertex_memory, vertex_buffer] = stage_and_copy_buffer(state, vertices, vertex_count, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
         auto [index_memory, index_buffer] = stage_and_copy_buffer(state, indices, index_count, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-        state->terrain_mesh = Triangle_Mesh{
+        return Triangle_Mesh{
                 .vertex_count = vertex_count,
                 .vertex_buffer = vertex_buffer,
                 .vertex_buffer_memory = vertex_memory,
@@ -1334,10 +1332,10 @@ constexpr auto load_terane_mesh32(Render_State * state, glm::vec3 * vertices, u3
         };
 }
 
-constexpr auto load_terane_mesh64(Render_State * state, glm::vec3 * vertices, u64 vertex_count, u64 * indices, u64 index_count)noexcept{
+constexpr auto load_mesh64(Render_State * state, glm::vec3 * vertices, u64 vertex_count, u64 * indices, u64 index_count)noexcept{
         auto [vertex_memory, vertex_buffer] = stage_and_copy_buffer(state, vertices, vertex_count, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-        auto [index_memory, index_buffer] = stage_and_copy_buffer(state, vertices, vertex_count, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-        state->terrain_mesh = Triangle_Mesh{
+        auto [index_memory, index_buffer] = stage_and_copy_buffer(state, indices, index_count, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+        return Triangle_Mesh{
                 .vertex_count = vertex_count,
                 .vertex_buffer = vertex_buffer,
                 .vertex_buffer_memory = vertex_memory,
@@ -1347,7 +1345,7 @@ constexpr auto load_terane_mesh64(Render_State * state, glm::vec3 * vertices, u6
         };
 }
 
-constexpr void record_command_buffers(Render_State const *state, u32 swapchain_image_index) noexcept {
+inline void record_command_buffers(Render_State const *state, u32 swapchain_image_index) noexcept {
         auto const clear_values = std::array{
                 VkClearValue{.color = VkClearColorValue{.float32 = {1, 0, 1, 0}}},
                 VkClearValue{.depthStencil = VkClearDepthStencilValue{.depth = 1, .stencil = 0}},
@@ -1358,18 +1356,18 @@ constexpr void record_command_buffers(Render_State const *state, u32 swapchain_i
         };
 
         auto &command_buffer = state->command_buffers[swapchain_image_index];
-        auto &frame_buffer = state->frame_buffers[swapchain_image_index];
+        auto &framebuffer = state->frame_buffers[swapchain_image_index];
 
         auto const command_buffer_begin_info = VkCommandBufferBeginInfo{
                 .sType = vku::GetSType<VkCommandBufferBeginInfo>(),
         };
 
         state->device_functions.vkBeginCommandBuffer(command_buffer, &command_buffer_begin_info);
-
+        
         auto const render_pass_begin_info = VkRenderPassBeginInfo{
                 .sType = vku::GetSType<VkRenderPassBeginInfo>(),
                 .renderPass = state->render_pass,
-                .framebuffer = frame_buffer,
+                .framebuffer = framebuffer,
                 .renderArea = VkRect2D{.offset{0, 0}, .extent = state->swapchain_extent},
                 .clearValueCount = clear_values.size(),
                 .pClearValues = clear_values.data(),
@@ -1381,14 +1379,17 @@ constexpr void record_command_buffers(Render_State const *state, u32 swapchain_i
         state->device_functions.vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, state->graphics_pipeline);
 
         VkDeviceSize offsets = 0;
+        state->device_functions.vkCmdBindVertexBuffers(command_buffer, 0, 1, &state->player_mesh.vertex_buffer, &offsets);
+        state->device_functions.vkCmdBindIndexBuffer(command_buffer, state->player_mesh.index_buffer, 0, VkIndexType::VK_INDEX_TYPE_UINT32);
+        state->device_functions.vkCmdBindDescriptorSets(command_buffer, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, state->pipeline_layout, 0, 1, &state->uniform_descriptor_set, 0, nullptr);
+        state->device_functions.vkCmdDrawIndexed(command_buffer, state->player_mesh.index_count, 1, 0, 0, 0);
+
         state->device_functions.vkCmdBindVertexBuffers(command_buffer, 0, 1, &state->terrain_mesh.vertex_buffer, &offsets);
         state->device_functions.vkCmdBindIndexBuffer(command_buffer, state->terrain_mesh.index_buffer, 0, VkIndexType::VK_INDEX_TYPE_UINT32);
-
         state->device_functions.vkCmdBindDescriptorSets(command_buffer, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, state->pipeline_layout, 0, 1, &state->uniform_descriptor_set, 0, nullptr);
-        // state->device_functions.vkCmdPushConstants(command_buffer, state->pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(Ubo), &state->ubo);
-
-        // TODO: bind a freaking defffered draw buffer thingamajig or mesh shader drawer thingy.
         state->device_functions.vkCmdDrawIndexed(command_buffer, state->terrain_mesh.index_count, 1, 0, 0, 0);
+
+
         state->device_functions.vkCmdEndRenderPass(command_buffer);
         state->device_functions.vkEndCommandBuffer(command_buffer);
 }

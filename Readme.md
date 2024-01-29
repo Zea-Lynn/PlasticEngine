@@ -1,10 +1,6 @@
 PLASTIC ENGINE
 ==============
 
-Why
----
-because.
-
 Build
 -----
 ``` bash
@@ -16,5 +12,4 @@ cmake ../ -GNinja
 ninja  
 ./plastic  
 ```
-
 
