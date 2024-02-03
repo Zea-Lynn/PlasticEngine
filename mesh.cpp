@@ -200,8 +200,8 @@ auto create_icosphere() {
 
 auto create_platform(){
         struct{
-                glm::vec3 points[4]{{-10,0,-10}, {10,0,-10}, {-10,0,10}, {10,0,10}};
-                u32 indices[6]{0,2,1,1,2,3};
+                glm::vec3 points[4]{{-10,-10,0}, {10,-10,0}, {-10,10,0}, {10,10,0}};
+                u32 indices[6]{0,1,2,2,1,3};
         } platform;
 
         return platform;

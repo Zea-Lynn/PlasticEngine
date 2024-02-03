@@ -5,7 +5,7 @@
 
 int main() noexcept {
         if (not glfwInit()) {
-                std::puts("Could not initialize GLFW");
+                puts("Could not initialize GLFW");
                 exit(123);
         }
 
@@ -14,12 +14,12 @@ int main() noexcept {
         glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
         const auto window = glfwCreateWindow(width, height, "plastic", nullptr, nullptr);
         if (not window) {
-                std::puts("Could get GLFW window");
+                puts("Could get GLFW window");
                 exit(123);
         }
 
         if (glfwVulkanSupported() == GLFW_API_UNAVAILABLE) {
-                std::puts("Vulkan is not supported.\n");
+                puts("Vulkan is not supported.\n");
                 exit(123);
         }
 
@@ -52,12 +52,12 @@ int main() noexcept {
 
         double mouse_start_x = -1, mouse_start_y = -1;
 
-        auto const view = glm::lookAt(glm::vec3(5.0f, 5.0f, 5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 100.0f));
+        auto const view = glm::lookAt(glm::vec3(5.0f, 5.0f, 5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f));
         auto const projection = glm::perspective(glm::radians(45.0f), render_state.swapchain_extent.width / (float)render_state.swapchain_extent.height, 0.1f, 10.0f);
-        auto const camera_u = render_state.ubo.camera * glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
-        auto const camera_v = render_state.ubo.camera * glm::vec4(0.0f, 1.0f, 0.0f, 1.0f);
-        render_state.ubo.camera = projection * view;
-        render_state.ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(1,0,0));
+        render_state.player_ubo.camera = projection * view;
+        render_state.player_ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(1,0,0));
+        render_state.terrain_ubo.camera = projection * view;
+        render_state.terrain_ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(1,0,0)) * glm::translate(glm::mat4(1.0f), {-.5f, -.5f, -.5f});
 
         auto start_time = std::chrono::high_resolution_clock::now();
         float rotation_offset = 0;
@@ -66,14 +66,14 @@ int main() noexcept {
         while (true /* not glfwWindowShouldClose(window) */) {
                 glfwPollEvents();
 
-
                 // render_state.ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
                 // render_state.ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f,0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
                 // render_state.ubo.projection = glm::perspective(glm::radians(45.0f), render_state.swapchain_extent.width / (float) render_state.swapchain_extent.height, 0.1f, 10.0f);
                 // auto const model = glm::rotate(glm::mat4(1.0f), time * glm::radians(180.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
                 // render_state.ubo.model = model;
-                memcpy(render_state.ubo_mapped_memory, &render_state.ubo, sizeof(Ubo));
+                memcpy(render_state.player_ubo_mapped_memory, &render_state.player_ubo, sizeof(Ubo));
+                memcpy(render_state.terrain_ubo_mapped_memory, &render_state.terrain_ubo, sizeof(Ubo));
 
                 auto mouse_state = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);
                 if(mouse_state == GLFW_PRESS){
@@ -85,7 +85,7 @@ int main() noexcept {
                                 double x_pos = 0.1, y_pos = 0.1;
                                 glfwGetCursorPos(window, &x_pos, &y_pos);
                                 x_offset = (mouse_start_x - x_pos)/(double)width;
-                                render_state.ubo.model = glm::rotate(glm::mat4(1.0f), (rotation_offset + x_offset) * glm::radians(180.0f), glm::vec3(1,0,0));
+                                render_state.player_ubo.model = glm::rotate(glm::mat4(1.0f), (rotation_offset + x_offset) * glm::radians(180.0f), glm::vec3(1,0,0));
                         }
 
                 }else if(mouse_state == GLFW_RELEASE and dragging){
@@ -97,7 +97,6 @@ int main() noexcept {
                         // rotation_offset = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
                         // render_state.ubo.model = glm::rotate(glm::mat4(1.0f), rotation_offset * glm::radians(180.0f), glm::vec3(1,0,0));
                 }
-
 
 
                 draw_frame(&render_state);
