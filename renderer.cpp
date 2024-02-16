@@ -90,17 +90,21 @@ struct Triangle_Mesh {
         VkDeviceMemory index_buffer_memory;
 };
 
+struct Image{
+        VkImage depth_images;
+        VkDeviceMemory depth_images_memory;
+        VkImageView depth_images_views;
+};
+
 struct Line_Mesh {};
 
 struct Render_State {
         std::pmr::polymorphic_allocator<u8> allocator;
         VkAllocationCallbacks *vulkan_allocator = nullptr;
-
         char **enabled_layer_names;
         u32 layer_count;
         char **enabled_extension_names;
         u32 extension_count;
-
         VkInstance instance;
         VkSurfaceKHR window_surface;
         Instance_Functions instance_functions;
@@ -108,10 +112,8 @@ struct Render_State {
         VkPhysicalDevice physical_device;
         VkPhysicalDeviceFeatures physical_device_features;
         VkPhysicalDeviceMemoryProperties physical_device_memory_properties;
-
         char **enabled_device_extensions;
         u32 device_extension_count;
-
         VkDevice device;
         PFN_vkGetDeviceProcAddr vkGetDeviceProcAddr;
         Device_Functions device_functions;
@@ -120,55 +122,46 @@ struct Render_State {
         u32 swapchain_image_count;
         VkRenderPass render_pass;
         VkViewport viewport;
-
         VkPipelineLayout pipeline_layout;
         VkPipeline graphics_pipeline;
-        u32 vertex_count;
-
-        VkCommandPool command_pool;
-        VkBuffer vertex_buffer;
-        VkDeviceMemory vertex_buffer_memory;
-
-        u32 index_count;
-        VkBuffer index_buffer;
-        VkDeviceMemory index_buffer_memory;
-
-        Line_Mesh bounding_sphere_mesh;
-        Line_Mesh debug_mesh;
-        Line_Mesh selected_object_mesh;
-
-        Triangle_Mesh terrain_mesh;
-        Triangle_Mesh player_mesh;
-        u32 opaque_mesh_count;
-        Triangle_Mesh *opaque_meshes;
-
         VkQueue graphics_queue;
         VkQueue present_queue;
         VkFramebuffer *frame_buffers;
         VkCommandBuffer *command_buffers;
-
+        VkCommandPool command_pool;
+        VkSemaphore *image_available_semaphores;
+        VkSemaphore *render_finished_semaphores;
+        VkFence *image_in_flieght_fences;
         VkImage *depth_images;
         VkDeviceMemory *depth_images_memory;
         VkImageView *depth_images_views;
 
+        s64 current_frame = 0;
+        Ubo player_ubo;
+        Ubo terrain_ubo;
 
+        u32 vertex_count;
+        VkBuffer vertex_buffer;
+        VkDeviceMemory vertex_buffer_memory;
+        u32 index_count;
+        VkBuffer index_buffer;
+        VkDeviceMemory index_buffer_memory;
+        Line_Mesh bounding_sphere_mesh;
+        Line_Mesh debug_mesh;
+        Line_Mesh selected_object_mesh;
+        Image terrain_texture;
+        Triangle_Mesh terrain_mesh;
+        Triangle_Mesh player_mesh;
+        u32 opaque_mesh_count;
         VkBuffer player_ubo_buffer;
         VkDeviceMemory player_ubo_memory;
         void *player_ubo_mapped_memory;
         VkDescriptorSet player_ubo_descriptor_set;
-
         VkBuffer terrain_ubo_buffer;
         VkDeviceMemory terrain_ubo_memory;
         void *terrain_ubo_mapped_memory;
         VkDescriptorSet terrain_ubo_descriptor_set;
 
-        VkSemaphore *image_available_semaphores;
-        VkSemaphore *render_finished_semaphores;
-        VkFence *image_in_flieght_fences;
-
-        s64 current_frame = 0;
-        Ubo player_ubo;
-        Ubo terrain_ubo;
 };
 
 template <typename T> T load_instance_function(Render_State *state, char const *name) noexcept { return reinterpret_cast<T>(state->vkGetInstanceProcAddr(state->instance, name)); }
@@ -882,7 +875,7 @@ auto initalize(Render_State *state, GLFWwindow *window) noexcept {
 
         auto const descriptor_set_bindings = std::array{
                 ubo_binding,
-                // sampler_binding,
+                sampler_binding,
         };
 
         auto const descriptor_set_info = VkDescriptorSetLayoutCreateInfo{
@@ -1382,6 +1375,65 @@ constexpr auto load_mesh64(Render_State * state, glm::vec3 * vertices, u64 verte
                 .index_buffer = index_buffer,
                 .index_buffer_memory = index_memory,
         };
+}
+
+constexpr auto load_texture(Render_State * state, char const * path, u32 mip_levels) noexcept -> std::optional<Image>{
+        int width, height, c;
+        auto image_data = stbi_load(path, &width, &height, &c, STBI_rgb_alpha);
+
+        auto texture_format = std::optional<VkFormat>();
+        for (auto format : {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT}) {
+                VkFormatProperties physical_device_format_properties;
+                state->instance_functions.vkGetPhysicalDeviceFormatProperties(state->physical_device, format, &physical_device_format_properties); 
+                if ((physical_device_format_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) > 0) {
+                        texture_format = format;
+                        break;
+                }
+        }
+
+        if(not texture_format){
+                puts(std::format("unable to find a suitable format for texture {}", path).c_str());
+        }
+
+        auto const image_info = VkImageCreateInfo{
+                .sType = vku::GetSType<VkImageCreateInfo>(),
+                .imageType = VK_IMAGE_TYPE_2D,
+                .format = texture_format.value(),
+                .extent = VkExtent3D{static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1},
+                .mipLevels = mip_levels,
+                .arrayLayers = 1,
+                .samples = VK_SAMPLE_COUNT_1_BIT,
+                .tiling = VK_IMAGE_TILING_OPTIMAL,
+                .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                .queueFamilyIndexCount = 0,
+                .pQueueFamilyIndices = nullptr,
+                .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        };
+
+        VkImage image;
+        if (vkCreateImage(state->device, &image_info, state->vulkan_allocator, &image) not_eq VK_SUCCESS) {
+                std::puts("unable to create vulkan image");
+                std::exit(420);
+        }
+        VkMemoryRequirements image_memory_requirements;
+        vkGetImageMemoryRequirements(state->device, image, &image_memory_requirements);
+
+        VkMemoryAllocateInfo memory_allocate_info{
+                .sType = vku::GetSType<VkMemoryAllocateInfo>(),
+                .allocationSize = image_memory_requirements.size,
+                .memoryTypeIndex = find_memory_type(state,image_memory_requirements.memoryTypeBits, VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) 
+        };
+
+        VkDeviceMemory image_memory;
+        if (vkAllocateMemory(state->device, &memory_allocate_info, state->vulkan_allocator, &image_memory) not_eq VK_SUCCESS) {
+                puts("unable to allocate memory for an image");
+                exit(420);
+        }
+
+        if (vkBindImageMemory(state->device, image, image_memory, 0) not_eq VK_SUCCESS) {
+                exit(420);
+        }
+        stbi_image_free(image_data);
 }
 
 inline void record_command_buffers(Render_State const *state, u32 swapchain_image_index) noexcept {

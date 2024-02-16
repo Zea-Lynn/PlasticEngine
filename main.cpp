@@ -2,6 +2,7 @@
 #include "includes.h"
 #include "mesh.cpp"
 #include "renderer.cpp"
+#include "./smol-gltf/smol_gltf.h"
 
 int main() noexcept {
         if (not glfwInit()) {
@@ -36,6 +37,9 @@ int main() noexcept {
         {
                 auto [points, indices] = create_icosphere(); 
                 render_state.player_mesh = load_mesh32(&render_state, points.data(), points.size(), indices.data(), indices.size());
+        }
+        {
+                render_state.terrain_texture = load_texture(&render_state, "sometexture.png");
         }
 
         glfwSetWindowUserPointer(window, &render_state);
