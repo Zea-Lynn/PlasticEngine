@@ -91,9 +91,9 @@ struct Triangle_Mesh {
 };
 
 struct Image{
-        VkImage depth_images;
-        VkDeviceMemory depth_images_memory;
-        VkImageView depth_images_views;
+        VkImage image;
+        VkDeviceMemory memory;
+        VkImageView view;
 };
 
 struct Line_Mesh {};
@@ -1351,7 +1351,7 @@ template <typename T> constexpr auto stage_and_copy_buffer(Render_State *state, 
         return buffer_handle_and_memory;
 };
 
-constexpr auto load_mesh32(Render_State * state, glm::vec3 * vertices, u32 vertex_count, u32 * indices, u32 index_count) noexcept{
+constexpr auto load_mesh32(Render_State * state, glm::vec3 const * vertices, u32 vertex_count, u32 const * indices, u32 index_count) noexcept{
         auto [vertex_memory, vertex_buffer] = stage_and_copy_buffer(state, vertices, vertex_count, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
         auto [index_memory, index_buffer] = stage_and_copy_buffer(state, indices, index_count, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
         return Triangle_Mesh{
@@ -1364,7 +1364,7 @@ constexpr auto load_mesh32(Render_State * state, glm::vec3 * vertices, u32 verte
         };
 }
 
-constexpr auto load_mesh64(Render_State * state, glm::vec3 * vertices, u64 vertex_count, u64 * indices, u64 index_count)noexcept{
+constexpr auto load_mesh64(Render_State * state, glm::vec3 const * vertices, u64 vertex_count, u64 const * indices, u64 index_count)noexcept{
         auto [vertex_memory, vertex_buffer] = stage_and_copy_buffer(state, vertices, vertex_count, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
         auto [index_memory, index_buffer] = stage_and_copy_buffer(state, indices, index_count, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
         return Triangle_Mesh{
@@ -1377,64 +1377,69 @@ constexpr auto load_mesh64(Render_State * state, glm::vec3 * vertices, u64 verte
         };
 }
 
-constexpr auto load_texture(Render_State * state, char const * path, u32 mip_levels) noexcept -> std::optional<Image>{
-        int width, height, c;
-        auto image_data = stbi_load(path, &width, &height, &c, STBI_rgb_alpha);
-
-        auto texture_format = std::optional<VkFormat>();
-        for (auto format : {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT}) {
-                VkFormatProperties physical_device_format_properties;
-                state->instance_functions.vkGetPhysicalDeviceFormatProperties(state->physical_device, format, &physical_device_format_properties); 
-                if ((physical_device_format_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) > 0) {
-                        texture_format = format;
-                        break;
-                }
-        }
-
-        if(not texture_format){
-                puts(std::format("unable to find a suitable format for texture {}", path).c_str());
-        }
-
-        auto const image_info = VkImageCreateInfo{
-                .sType = vku::GetSType<VkImageCreateInfo>(),
-                .imageType = VK_IMAGE_TYPE_2D,
-                .format = texture_format.value(),
-                .extent = VkExtent3D{static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1},
-                .mipLevels = mip_levels,
-                .arrayLayers = 1,
-                .samples = VK_SAMPLE_COUNT_1_BIT,
-                .tiling = VK_IMAGE_TILING_OPTIMAL,
-                .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-                .queueFamilyIndexCount = 0,
-                .pQueueFamilyIndices = nullptr,
-                .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-        };
-
-        VkImage image;
-        if (vkCreateImage(state->device, &image_info, state->vulkan_allocator, &image) not_eq VK_SUCCESS) {
-                std::puts("unable to create vulkan image");
-                std::exit(420);
-        }
-        VkMemoryRequirements image_memory_requirements;
-        vkGetImageMemoryRequirements(state->device, image, &image_memory_requirements);
-
-        VkMemoryAllocateInfo memory_allocate_info{
-                .sType = vku::GetSType<VkMemoryAllocateInfo>(),
-                .allocationSize = image_memory_requirements.size,
-                .memoryTypeIndex = find_memory_type(state,image_memory_requirements.memoryTypeBits, VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) 
-        };
-
-        VkDeviceMemory image_memory;
-        if (vkAllocateMemory(state->device, &memory_allocate_info, state->vulkan_allocator, &image_memory) not_eq VK_SUCCESS) {
-                puts("unable to allocate memory for an image");
-                exit(420);
-        }
-
-        if (vkBindImageMemory(state->device, image, image_memory, 0) not_eq VK_SUCCESS) {
-                exit(420);
-        }
-        stbi_image_free(image_data);
-}
+// constexpr auto load_texture(Render_State * state, char const * path, u32 mip_levels) noexcept -> std::optional<Image>{
+//         int width, height, c;
+//         auto image_data = stbi_load(path, &width, &height, &c, STBI_rgb_alpha);
+//
+//         auto texture_format = std::optional<VkFormat>();
+//         for (auto format : {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT}) {
+//                 VkFormatProperties physical_device_format_properties;
+//                 state->instance_functions.vkGetPhysicalDeviceFormatProperties(state->physical_device, format, &physical_device_format_properties); 
+//                 if ((physical_device_format_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) > 0) {
+//                         texture_format = format;
+//                         break;
+//                 }
+//         }
+//
+//         if(not texture_format){
+//                 puts(std::format("unable to find a suitable format for texture {}", path).c_str());
+//         }
+//
+//         auto const image_info = VkImageCreateInfo{
+//                 .sType = vku::GetSType<VkImageCreateInfo>(),
+//                 .imageType = VK_IMAGE_TYPE_2D,
+//                 .format = texture_format.value(),
+//                 .extent = VkExtent3D{static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1},
+//                 .mipLevels = mip_levels,
+//                 .arrayLayers = 1,
+//                 .samples = VK_SAMPLE_COUNT_1_BIT,
+//                 .tiling = VK_IMAGE_TILING_OPTIMAL,
+//                 .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+//                 .queueFamilyIndexCount = 0,
+//                 .pQueueFamilyIndices = nullptr,
+//                 .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+//         };
+//
+//         VkImage image;
+//         if (vkCreateImage(state->device, &image_info, state->vulkan_allocator, &image) not_eq VK_SUCCESS) {
+//                 std::puts("unable to create vulkan image");
+//                 std::exit(420);
+//         }
+//         VkMemoryRequirements image_memory_requirements;
+//         vkGetImageMemoryRequirements(state->device, image, &image_memory_requirements);
+//
+//         VkMemoryAllocateInfo memory_allocate_info{
+//                 .sType = vku::GetSType<VkMemoryAllocateInfo>(),
+//                 .allocationSize = image_memory_requirements.size,
+//                 .memoryTypeIndex = find_memory_type(state,image_memory_requirements.memoryTypeBits, VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) 
+//         };
+//
+//         VkDeviceMemory image_memory;
+//         if (vkAllocateMemory(state->device, &memory_allocate_info, state->vulkan_allocator, &image_memory) not_eq VK_SUCCESS) {
+//                 puts("unable to allocate memory for an image");
+//                 exit(420);
+//         }
+//
+//         if (vkBindImageMemory(state->device, image, image_memory, 0) not_eq VK_SUCCESS) {
+//                 exit(420);
+//         }
+//         stbi_image_free(image_data);
+//         return Image{
+//                 .image = image,
+//                 .memory = image_memory,
+//                 .view = image_view
+//         };
+// }
 
 inline void record_command_buffers(Render_State const *state, u32 swapchain_image_index) noexcept {
         auto const clear_values = std::array{

@@ -2,6 +2,8 @@
 #include "includes.h"
 #include "mesh.cpp"
 #include "renderer.cpp"
+
+#include "gltf_stuff.cpp"
 #include "./smol-gltf/smol_gltf.h"
 
 int main() noexcept {
@@ -10,12 +12,47 @@ int main() noexcept {
                 exit(123);
         }
 
+        // TODO: maybe figure out a better way.
+        smol_GLTF gltf; 
+        smol_allocator smol_allocator;
+        if(not smol_parse_GLTF(monkey_glb_len, monkey_glb, &gltf, {&malloc, &free})){
+                puts("error parsing gltf, oopsie");
+                exit(420);
+        }
+
+        size_t pos_byte_length = 0;
+        size_t pos_offset = 0;
+        size_t pos_count = 0; 
+        size_t pos_index_byte_length = 0;
+        size_t pos_index_offset = 0; 
+        size_t pos_index_count = 0;
+
+        for(auto attribute_index = 0; attribute_index < gltf.meshes[0].primitives[0].attribute_count; ++attribute_index){
+                auto attribute = gltf.meshes->primitives->attributes[attribute_index];
+                if(attribute.name == smol_POSITION){
+                        auto position_view = gltf.buffer_views[gltf.accessors[attribute.accessor].buffer_view];
+                        pos_count = gltf.accessors[attribute.accessor].count;
+                        pos_byte_length = position_view.byte_length;
+                        pos_offset = position_view.byte_offset;
+                        auto index_view = gltf.buffer_views[gltf.accessors[gltf.meshes->primitives->indices].buffer_view];
+                        pos_index_byte_length = index_view.byte_length;
+                        pos_index_offset = index_view.byte_offset;
+                        pos_index_count = gltf.accessors[gltf.meshes->primitives->indices].count;
+                }
+        }
+
+        auto gltf_points = reinterpret_cast<glm::vec3 const *>(gltf.data + pos_offset);
+        auto gltf_indices = std::vector<u32>(pos_index_count);
+        for(auto pos_index_index = 0; pos_index_index < pos_index_count; ++pos_index_index){
+                gltf_indices[pos_index_index] = static_cast<u32>(reinterpret_cast<u16 const *>(gltf.data + pos_index_offset)[pos_index_index]);
+        }
+
         const auto width = 512 * 2, height = 512 * 2;
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
         const auto window = glfwCreateWindow(width, height, "plastic", nullptr, nullptr);
         if (not window) {
-                puts("Could get GLFW window");
+                puts("Couldn't get GLFW window");
                 exit(123);
         }
 
@@ -35,11 +72,13 @@ int main() noexcept {
                 render_state.terrain_mesh = load_mesh32(&render_state, points, 4, indices, 6);
         }
         {
-                auto [points, indices] = create_icosphere(); 
-                render_state.player_mesh = load_mesh32(&render_state, points.data(), points.size(), indices.data(), indices.size());
+                // auto [points, indices] = create_icosphere(); 
+                // render_state.player_mesh = load_mesh32(&render_state, points.data(), points.size(), indices.data(), indices.size());
+                // auto [points, indices] = create_icosphere(); 
+                render_state.player_mesh = load_mesh32(&render_state, gltf_points, pos_count, gltf_indices.data(), gltf_indices.size());
         }
         {
-                render_state.terrain_texture = load_texture(&render_state, "sometexture.png");
+                // render_state.terrain_texture = load_texture(&render_state, "sometexture.png");
         }
 
         glfwSetWindowUserPointer(window, &render_state);
