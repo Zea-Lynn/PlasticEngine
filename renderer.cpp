@@ -248,7 +248,7 @@ template <typename T> static T load_vulkan_function(VkInstance instance, const c
 
 auto create_basic_graphics_pipeline(Render_State *state) {}
 
-constexpr auto find_memory_type(Render_State * state, uint32_t memory_bits_requirement, VkMemoryPropertyFlags properties) noexcept {
+inline constexpr auto find_memory_type(Render_State * state, uint32_t memory_bits_requirement, VkMemoryPropertyFlags properties) noexcept {
         for (uint32_t memory_type_index = 0; memory_type_index < state->physical_device_memory_properties.memoryTypeCount; ++memory_type_index) {
                 auto memory_properties =state-> physical_device_memory_properties.memoryTypes[memory_type_index];
                 if (memory_bits_requirement & (1 << memory_type_index) and (memory_properties.propertyFlags & properties) == properties) {
@@ -260,7 +260,7 @@ constexpr auto find_memory_type(Render_State * state, uint32_t memory_bits_requi
         exit(420);
 };
 
-auto initalize(Render_State *state, GLFWwindow *window) noexcept {
+inline auto initalize(Render_State *state, GLFWwindow *window) noexcept {
         puts("initalizeing vulkan render state");
         auto app_info = VkApplicationInfo{
                 .sType = vku::GetSType<VkApplicationInfo>(),

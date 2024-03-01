@@ -2,6 +2,7 @@
 #include "includes.h"
 #include "mesh.cpp"
 #include "renderer.cpp"
+#include "gui.cpp"
 
 #include "gltf_stuff.cpp"
 #include "./smol-gltf/smol_gltf.h"
@@ -12,21 +13,20 @@ int main() noexcept {
                 exit(123);
         }
 
+
         // TODO: maybe figure out a better way.
         smol_GLTF gltf; 
-        smol_allocator smol_allocator;
-        if(not smol_parse_GLTF(monkey_glb_len, monkey_glb, &gltf, {&malloc, &free})){
+        smol_allocator smol_allocator = {.user_data = nullptr, .allocate = [](auto user_data, auto size){return malloc(size);}, .free = [](auto user_data, auto ptr){free(ptr);}};
+        if(not smol_parse_GLTF(monkey_glb_len, monkey_glb, &gltf, smol_allocator)){
                 puts("error parsing gltf, oopsie");
                 exit(420);
         }
-
         size_t pos_byte_length = 0;
         size_t pos_offset = 0;
         size_t pos_count = 0; 
         size_t pos_index_byte_length = 0;
         size_t pos_index_offset = 0; 
         size_t pos_index_count = 0;
-
         for(auto attribute_index = 0; attribute_index < gltf.meshes[0].primitives[0].attribute_count; ++attribute_index){
                 auto attribute = gltf.meshes->primitives->attributes[attribute_index];
                 if(attribute.name == smol_POSITION){
@@ -40,7 +40,6 @@ int main() noexcept {
                         pos_index_count = gltf.accessors[gltf.meshes->primitives->indices].count;
                 }
         }
-
         auto gltf_points = reinterpret_cast<glm::vec3 const *>(gltf.data + pos_offset);
         auto gltf_indices = std::vector<u32>(pos_index_count);
         for(auto pos_index_index = 0; pos_index_index < pos_index_count; ++pos_index_index){
@@ -66,6 +65,7 @@ int main() noexcept {
         Render_State render_state;
         initalize(&render_state, window);
 
+        // auto imgui = IMGUI::initalize(); 
 
         {
                 auto [points, indices] = create_platform();
