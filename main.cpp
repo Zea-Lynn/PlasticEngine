@@ -13,7 +13,6 @@ int main() noexcept {
                 exit(123);
         }
 
-
         // TODO: maybe figure out a better way.
         smol_GLTF gltf; 
         smol_allocator smol_allocator = {.user_data = nullptr, .allocate = [](auto user_data, auto size){return malloc(size);}, .free = [](auto user_data, auto ptr){free(ptr);}};
@@ -62,26 +61,26 @@ int main() noexcept {
 
         auto allocator = nullptr;
 
-        Render_State render_state;
-        initalize(&render_state, window);
+        Render_State renderer;
+        Render_State::initalize(&renderer, window);
 
         // auto imgui = IMGUI::initalize(); 
 
         {
                 auto [points, indices] = create_platform();
-                render_state.terrain_mesh = load_mesh32(&render_state, points, 4, indices, 6);
+                renderer.terrain_mesh = renderer.load_mesh32(points, 4, indices, 6);
         }
         {
                 // auto [points, indices] = create_icosphere(); 
                 // render_state.player_mesh = load_mesh32(&render_state, points.data(), points.size(), indices.data(), indices.size());
                 // auto [points, indices] = create_icosphere(); 
-                render_state.player_mesh = load_mesh32(&render_state, gltf_points, pos_count, gltf_indices.data(), gltf_indices.size());
+                renderer.player_mesh = renderer.load_mesh32(gltf_points, pos_count, gltf_indices.data(), gltf_indices.size());
         }
         {
                 // render_state.terrain_texture = load_texture(&render_state, "sometexture.png");
         }
 
-        glfwSetWindowUserPointer(window, &render_state);
+        glfwSetWindowUserPointer(window, &renderer);
         glfwSetKeyCallback(window, [](GLFWwindow *window, int key, int scancode, int action, int mods) {
                 auto render_state = (Render_State *)glfwGetWindowUserPointer(window);
                 if (key == GLFW_KEY_ESCAPE) {
@@ -91,23 +90,41 @@ int main() noexcept {
 
         glfwSetWindowCloseCallback(window, [](GLFWwindow *window) { exit(0); });
 
-        for (auto i = 0; i < render_state.swapchain_image_count; ++i) record_command_buffers(&render_state, i);
+        auto gui = GUI::initalize();
+
+        // for (auto i = 0; i < renderer.swapchain_image_count; ++i) renderer.record_command_buffers(i);
 
         double mouse_start_x = -1, mouse_start_y = -1;
 
         auto const view = glm::lookAt(glm::vec3(5.0f, 5.0f, 5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f));
-        auto const projection = glm::perspective(glm::radians(45.0f), render_state.swapchain_extent.width / (float)render_state.swapchain_extent.height, 0.1f, 10.0f);
-        render_state.player_ubo.camera = projection * view;
-        render_state.player_ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(1,0,0));
-        render_state.terrain_ubo.camera = projection * view;
-        render_state.terrain_ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(1,0,0)) * glm::translate(glm::mat4(1.0f), {-.5f, -.5f, -.5f});
+        auto const projection = glm::perspective(glm::radians(45.0f), renderer.swapchain_extent.width / (float)renderer.swapchain_extent.height, 0.1f, 10.0f);
+        renderer.player_ubo.camera = projection * view;
+        renderer.player_ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(1,0,0));
+        renderer.terrain_ubo.camera = projection * view;
+        renderer.terrain_ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(1,0,0)) * glm::translate(glm::mat4(1.0f), {-.5f, -.5f, -.5f});
+        renderer.gui_ubo.camera = glm::identity<glm::mat4>();
+        renderer.gui_ubo.model = glm::identity<glm::mat4>();
 
         auto start_time = std::chrono::high_resolution_clock::now();
         float rotation_offset = 0;
         float x_offset = 0;
         bool dragging = false;
+
+        s8 something_button_id = -1;
+
         while (true /* not glfwWindowShouldClose(window) */) {
                 glfwPollEvents();
+
+                gui.begin(1, 1, 0,0, key::none);
+
+                if(gui.button(&something_button_id, "Something")){
+                        //TODO: do button stuff.
+                }
+
+                auto gui_data = gui.end();
+                auto gui_vertices = std::vector<glm::vec3>(gui_data.vertices.size());
+                for(auto i = 0; i < gui_vertices.size(); ++i) gui_vertices[i] = glm::vec3(gui_data.vertices[i], 0);
+                renderer.ui_mesh = renderer.load_mesh32(gui_vertices.data(), gui_vertices.size(), gui_data.indices.data(), gui_data.indices.size());
 
                 // render_state.ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
                 // render_state.ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f,0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
@@ -115,22 +132,20 @@ int main() noexcept {
                 // auto const model = glm::rotate(glm::mat4(1.0f), time * glm::radians(180.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
                 // render_state.ubo.model = model;
-                memcpy(render_state.player_ubo_mapped_memory, &render_state.player_ubo, sizeof(Ubo));
-                memcpy(render_state.terrain_ubo_mapped_memory, &render_state.terrain_ubo, sizeof(Ubo));
+                memcpy(renderer.player_ubo_mapped_memory, &renderer.player_ubo, sizeof(Ubo));
+                memcpy(renderer.terrain_ubo_mapped_memory, &renderer.terrain_ubo, sizeof(Ubo));
 
                 auto mouse_state = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);
                 if(mouse_state == GLFW_PRESS){
                         if(not dragging){
                                 glfwGetCursorPos(window, &mouse_start_x, &mouse_start_y);
                                 dragging = true;
-                        }
-                        if(dragging){
+                        }else{
                                 double x_pos = 0.1, y_pos = 0.1;
                                 glfwGetCursorPos(window, &x_pos, &y_pos);
                                 x_offset = (mouse_start_x - x_pos)/(double)width;
-                                render_state.player_ubo.model = glm::rotate(glm::mat4(1.0f), (rotation_offset + x_offset) * glm::radians(180.0f), glm::vec3(1,0,0));
+                                renderer.player_ubo.model = glm::rotate(glm::mat4(1.0f), (rotation_offset + x_offset) * glm::radians(180.0f), glm::vec3(1,0,0));
                         }
-
                 }else if(mouse_state == GLFW_RELEASE and dragging){
                         dragging = false;
                         rotation_offset += x_offset;
@@ -141,8 +156,7 @@ int main() noexcept {
                         // render_state.ubo.model = glm::rotate(glm::mat4(1.0f), rotation_offset * glm::radians(180.0f), glm::vec3(1,0,0));
                 }
 
-
-                draw_frame(&render_state);
+                renderer.draw_frame();
 
                 // std::this_thread::sleep_for(std::chrono::milliseconds(33));
                 // while (std::getchar() not_eq '\n')
