@@ -24,6 +24,7 @@ struct Instance_Functions {
 
 struct Device_Functions {
         PFN_vkGetDeviceQueue vkGetDeviceQueue;
+        PFN_vkCreateSampler vkCreateSampler;
         PFN_vkCreateSwapchainKHR vkCreateSwapchainKHR;
         PFN_vkGetSwapchainImagesKHR vkGetSwapchainImagesKHR;
         PFN_vkCreateImageView vkCreateImageView;
@@ -40,9 +41,12 @@ struct Device_Functions {
         PFN_vkAllocateDescriptorSets vkAllocateDescriptorSets;
         PFN_vkUpdateDescriptorSets vkUpdateDescriptorSets;
         PFN_vkAllocateCommandBuffers vkAllocateCommandBuffers;
+        PFN_vkFreeCommandBuffers vkFreeCommandBuffers; 
         PFN_vkBeginCommandBuffer vkBeginCommandBuffer;
         PFN_vkEndCommandBuffer vkEndCommandBuffer;
         PFN_vkCmdCopyBuffer vkCmdCopyBuffer;
+        PFN_vkCmdPipelineBarrier vkCmdPipelineBarrier;
+        PFN_vkCmdCopyBufferToImage vkCmdCopyBufferToImage;
         PFN_vkCmdBeginRenderPass vkCmdBeginRenderPass;
         PFN_vkCmdEndRenderPass vkCmdEndRenderPass;
         PFN_vkCmdSetScissor vkCmdSetScissor;
@@ -89,16 +93,16 @@ struct Triangle_Mesh {
         VkBuffer index_buffer;
         VkDeviceMemory index_buffer_memory;
 
-        u64 texcoord_count;
-        VkBuffer texcoord_buffer;
-        VkDeviceMemory texcoord_buffer_memory;
+        u64 texture_uv_count;
+        VkBuffer texture_uv_buffer;
+        VkDeviceMemory texture_uv_buffer_memory;
 };
 
-struct Image{
-        VkImage image;
-        VkBuffer buffer;
-        VkDeviceMemory memory;
-        VkImageView view;
+struct Texture{
+        VkImage image = VK_NULL_HANDLE;
+        VkDeviceMemory memory = VK_NULL_HANDLE;
+        VkImageView view = VK_NULL_HANDLE;
+        VkSampler sampler = VK_NULL_HANDLE;
 };
 
 struct Line_Mesh {};
@@ -112,6 +116,8 @@ template <typename T> static T load_vulkan_function(const char *name) { return r
 
 template <typename T> static T load_vulkan_function(VkInstance instance, const char *name) { return reinterpret_cast<T>(glfwGetInstanceProcAddress(instance, name)); }
 
+
+//TODO: this needs to be completly refactored so that the models and textures can be packed together and rendered using minimal graphics pipelines.
 struct Render_State {
         std::pmr::polymorphic_allocator<u8> allocator;
         VkAllocationCallbacks *vulkan_allocator = nullptr;
@@ -136,6 +142,7 @@ struct Render_State {
         u32 swapchain_image_count;
         VkRenderPass render_pass;
         VkViewport viewport;
+        VkDescriptorSetLayout descriptor_set_layout;
         VkPipelineLayout pipeline_layout;
         VkPipeline graphics_pipeline;
         VkQueue graphics_queue;
@@ -164,7 +171,7 @@ struct Render_State {
         Line_Mesh bounding_sphere_mesh;
         Line_Mesh debug_mesh;
         Line_Mesh selected_object_mesh;
-        Image terrain_texture;
+        Texture terrain_texture;
         Triangle_Mesh terrain_mesh;
         Triangle_Mesh player_mesh;
         Triangle_Mesh ui_mesh;
@@ -177,6 +184,8 @@ struct Render_State {
         VkDeviceMemory terrain_ubo_memory;
         void *terrain_ubo_mapped_memory;
         VkDescriptorSet terrain_ubo_descriptor_set;
+
+        VkDescriptorSet texture_sampler_descriptor_set;
 
         template <typename T> inline T load_instance_function(char const *name) const noexcept { 
                 return reinterpret_cast<T>(vkGetInstanceProcAddr(instance, name)); 
@@ -204,6 +213,7 @@ struct Render_State {
         inline void load_device_functions() noexcept {
                 vkGetDeviceProcAddr = load_instance_function<PFN_vkGetDeviceProcAddr>("vkGetDeviceProcAddr");
                 device_functions.vkGetDeviceQueue = load_device_function<PFN_vkGetDeviceQueue>("vkGetDeviceQueue");
+                device_functions.vkCreateSampler = load_device_function<PFN_vkCreateSampler>("vkCreateSampler");
                 device_functions.vkCreateSwapchainKHR = load_device_function<PFN_vkCreateSwapchainKHR>("vkCreateSwapchainKHR");
                 device_functions.vkGetSwapchainImagesKHR = load_device_function<PFN_vkGetSwapchainImagesKHR>("vkGetSwapchainImagesKHR");
                 device_functions.vkCreateImageView = load_device_function<PFN_vkCreateImageView>("vkCreateImageView");
@@ -220,9 +230,12 @@ struct Render_State {
                 device_functions.vkAllocateDescriptorSets = load_device_function<PFN_vkAllocateDescriptorSets>("vkAllocateDescriptorSets");
                 device_functions.vkUpdateDescriptorSets = load_device_function<PFN_vkUpdateDescriptorSets>("vkUpdateDescriptorSets");
                 device_functions.vkAllocateCommandBuffers = load_device_function<PFN_vkAllocateCommandBuffers>("vkAllocateCommandBuffers");
+                device_functions.vkFreeCommandBuffers = load_device_function<PFN_vkFreeCommandBuffers>("vkFreeCommandBuffers");
                 device_functions.vkBeginCommandBuffer = load_device_function<PFN_vkBeginCommandBuffer>("vkBeginCommandBuffer");
                 device_functions.vkEndCommandBuffer = load_device_function<PFN_vkEndCommandBuffer>("vkEndCommandBuffer");
                 device_functions.vkCmdCopyBuffer = load_device_function<PFN_vkCmdCopyBuffer>("vkCmdCopyBuffer");
+                device_functions.vkCmdPipelineBarrier = load_device_function<PFN_vkCmdPipelineBarrier>("vkCmdPipelineBarrier");
+                device_functions.vkCmdCopyBufferToImage = load_device_function<PFN_vkCmdCopyBufferToImage>("vkCmdCopyBufferToImage");
                 device_functions.vkCmdBeginRenderPass = load_device_function<PFN_vkCmdBeginRenderPass>("vkCmdBeginRenderPass");
                 device_functions.vkCmdEndRenderPass = load_device_function<PFN_vkCmdEndRenderPass>("vkCmdEndRenderPass");
                 device_functions.vkCmdSetScissor = load_device_function<PFN_vkCmdSetScissor>("vkCmdSetScissor");
@@ -267,6 +280,134 @@ struct Render_State {
                 puts("unable to find suitable memory index.");
                 exit(420);
         };
+
+        inline auto create_buffer(VkBufferUsageFlags usage, VkMemoryPropertyFlags memory_properties, VkDeviceSize size, VkBuffer *buffer, VkDeviceMemory *buffer_memory)const noexcept{
+                auto const buffer_create_info = VkBufferCreateInfo{
+                        .sType = vku::GetSType<VkBufferCreateInfo>(),
+                        .size = size,
+                        .usage = usage,
+                        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+                };
+                device_functions.vkCreateBuffer(device, &buffer_create_info, vulkan_allocator, buffer);
+
+                VkMemoryRequirements buffer_memory_requirements;
+                device_functions.vkGetBufferMemoryRequirements(device, *buffer, &buffer_memory_requirements);
+
+                auto const buffer_memory_alloc_info = VkMemoryAllocateInfo{
+                        .sType = vku::GetSType<VkMemoryAllocateInfo>(),
+                        .allocationSize = buffer_memory_requirements.size,
+                        .memoryTypeIndex = find_memory_type(buffer_memory_requirements.memoryTypeBits, memory_properties),
+                };
+                device_functions.vkAllocateMemory(device, &buffer_memory_alloc_info, vulkan_allocator, buffer_memory);
+                device_functions.vkBindBufferMemory(device, *buffer, *buffer_memory, 0);
+        };
+
+        static inline auto settup_descriptors(Render_State *state) noexcept{
+                auto const ubo_buffer_size = sizeof(Ubo);
+                VkBuffer staging_terrain_ubo_buffer;
+                state->create_buffer(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, ubo_buffer_size, &state->terrain_ubo_buffer, &state->terrain_ubo_memory);
+                state->device_functions.vkMapMemory(state->device, state->terrain_ubo_memory, 0, ubo_buffer_size, 0, &state->terrain_ubo_mapped_memory);
+                memcpy(state->terrain_ubo_mapped_memory, &state->terrain_ubo, ubo_buffer_size);
+
+                auto const terrain_uniform_descriptor_pool_size = VkDescriptorPoolSize{.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount = max_frames_in_flieght};
+                auto const terrain_uniform_descriptor_pool_create_info = VkDescriptorPoolCreateInfo{
+                        .sType = vku::GetSType<VkDescriptorPoolCreateInfo>(),
+                        .maxSets = max_frames_in_flieght,
+                        .poolSizeCount = 1,
+                        .pPoolSizes = &terrain_uniform_descriptor_pool_size,
+                };
+
+                VkDescriptorPool terrain_uniform_descriptor_pool;
+                if (auto const result = state->device_functions.vkCreateDescriptorPool(state->device, &terrain_uniform_descriptor_pool_create_info, state->vulkan_allocator, &terrain_uniform_descriptor_pool); result not_eq VK_SUCCESS) {
+                        puts(std::format("unable to create descriptor pool {}", string_VkResult(result)).c_str());
+                        exit(429);
+                }
+
+                auto const terrain_descripotor_set_allocaiton_info = VkDescriptorSetAllocateInfo{
+                        .sType = vku::GetSType<VkDescriptorSetAllocateInfo>(),
+                        .descriptorPool = terrain_uniform_descriptor_pool,
+                        .descriptorSetCount = 1,
+                        .pSetLayouts = &state->descriptor_set_layout,
+                };
+
+                if (auto const result = state->device_functions.vkAllocateDescriptorSets(state->device, &terrain_descripotor_set_allocaiton_info, &state->terrain_ubo_descriptor_set); result not_eq VK_SUCCESS) {
+                        puts(std::format("unable to allocate descriptor sets {}", string_VkResult(result)).c_str());
+                        exit(420);
+                }
+
+                auto const terrain_uniform_buffer_info = VkDescriptorBufferInfo{
+                        .buffer = state->terrain_ubo_buffer,
+                        .offset = 0,
+                        .range = ubo_buffer_size,
+                };
+
+                auto const terrain_write_descriptor = VkWriteDescriptorSet{
+                        .sType = vku::GetSType<VkWriteDescriptorSet>(),
+                        .dstSet = state->terrain_ubo_descriptor_set,
+                        .dstBinding = 0,
+                        .dstArrayElement = 0,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                        .pImageInfo = nullptr,
+                        .pBufferInfo = &terrain_uniform_buffer_info,
+                        .pTexelBufferView = nullptr,
+                };
+
+                state->device_functions.vkUpdateDescriptorSets(state->device, 1, &terrain_write_descriptor, 0, nullptr);
+
+                VkBuffer staging_player_ubo_buffer;
+                state->create_buffer(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, ubo_buffer_size, &state->player_ubo_buffer, &state->player_ubo_memory);
+                state->device_functions.vkMapMemory(state->device, state->player_ubo_memory, 0, ubo_buffer_size, 0, &state->player_ubo_mapped_memory);
+                memcpy(state->player_ubo_mapped_memory, &state->player_ubo, ubo_buffer_size);
+
+                auto const uniform_descriptor_pool_size = VkDescriptorPoolSize{.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount = max_frames_in_flieght};
+                auto const uniform_descriptor_pool_create_info = VkDescriptorPoolCreateInfo{
+                        .sType = vku::GetSType<VkDescriptorPoolCreateInfo>(),
+                        .maxSets = max_frames_in_flieght,
+                        .poolSizeCount = 1,
+                        .pPoolSizes = &uniform_descriptor_pool_size,
+                };
+
+                VkDescriptorPool uniform_descriptor_pool;
+                if (auto const result = state->device_functions.vkCreateDescriptorPool(state->device, &uniform_descriptor_pool_create_info, state->vulkan_allocator, &uniform_descriptor_pool); result not_eq VK_SUCCESS) {
+                        puts(std::format("unable to create descriptor pool {}", string_VkResult(result)).c_str());
+                        exit(429);
+                }
+
+                auto const descripotor_set_allocaiton_info = VkDescriptorSetAllocateInfo{
+                        .sType = vku::GetSType<VkDescriptorSetAllocateInfo>(),
+                        .descriptorPool = uniform_descriptor_pool,
+                        .descriptorSetCount = 1,
+                        .pSetLayouts = &state->descriptor_set_layout,
+                };
+
+                if (auto const result = state->device_functions.vkAllocateDescriptorSets(state->device, &descripotor_set_allocaiton_info, &state->player_ubo_descriptor_set); result not_eq VK_SUCCESS) {
+                        puts(std::format("unable to allocate descriptor sets {}", string_VkResult(result)).c_str());
+                        exit(420);
+                }
+
+                auto const uniform_buffer_info = VkDescriptorBufferInfo{
+                        .buffer = state->player_ubo_buffer,
+                        .offset = 0,
+                        .range = ubo_buffer_size,
+                };
+
+                auto const write_descriptor = VkWriteDescriptorSet{
+                        .sType = vku::GetSType<VkWriteDescriptorSet>(),
+                        .dstSet = state->player_ubo_descriptor_set,
+                        .dstBinding = 0,
+                        .dstArrayElement = 0,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+                        .pImageInfo = nullptr,
+                        .pBufferInfo = &uniform_buffer_info,
+                        .pTexelBufferView = nullptr,
+                };
+
+                state->device_functions.vkUpdateDescriptorSets(state->device, 1, &write_descriptor, 0, nullptr);
+
+                
+        }
 
         static inline auto initalize(Render_State *state, GLFWwindow *window) noexcept {
                 puts("initalizeing vulkan render state");
@@ -657,33 +798,11 @@ struct Render_State {
                         fragment_shader_stage_create_info,
                 };
 
-                struct texture_uv {
-                        float u, v;
-                };
-
-                auto const vertex_texture_uv_binding_description = VkVertexInputBindingDescription{
-                        .binding = 1,
-                        .stride = sizeof(texture_uv),
-                        .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
-                };
-
-                auto const texture_uv_attribute = VkVertexInputAttributeDescription{
-                        .location = 1,
-                        .binding = vertex_texture_uv_binding_description.binding,
-                        .format = VK_FORMAT_R32G32_SFLOAT,
-                        .offset = 0,
-                };
-
-                struct vertex_position {
-                        float x, y, z;
-                };
-
                 auto const vertex_position_binding_description = VkVertexInputBindingDescription{
                         .binding = 0,
-                        .stride = sizeof(vertex_position),
+                        .stride = sizeof(glm::vec3),
                         .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
                 };
-
                 auto const vertex_position_attribute = VkVertexInputAttributeDescription{
                         .location = 0,
                         .binding = vertex_position_binding_description.binding,
@@ -691,13 +810,25 @@ struct Render_State {
                         .offset = 0,
                 };
 
+                auto const vertex_texture_uv_binding_description = VkVertexInputBindingDescription{
+                        .binding = 1,
+                        .stride = sizeof(glm::vec2),
+                        .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+                };
+                auto const texture_uv_attribute = VkVertexInputAttributeDescription{
+                        .location = 1,
+                        .binding = vertex_texture_uv_binding_description.binding,
+                        .format = VK_FORMAT_R32G32_SFLOAT,
+                        .offset = 0,
+                };
+
                 auto const vertex_binding_dexcriptions = std::array{
                         vertex_position_binding_description,
-                        // vertex_texture_uv_binding_description
+                        vertex_texture_uv_binding_description
                 };
                 auto const vertex_attribute_descritions = std::array{
                         vertex_position_attribute,
-                        // texture_uv_attribute,
+                        texture_uv_attribute,
                 };
 
                 auto const vertex_input_info = VkPipelineVertexInputStateCreateInfo{
@@ -834,6 +965,30 @@ struct Render_State {
                         .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
                         .pImmutableSamplers = nullptr,
                 };
+                
+                auto const sampler_create_info = VkSamplerCreateInfo{
+                        .sType = vku::GetSType<VkSamplerCreateInfo>(),
+                        .magFilter = VK_FILTER_LINEAR,
+                        .minFilter = VK_FILTER_LINEAR,
+                        .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+                        .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+                        .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+                        .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+                        .mipLodBias = 0.0f,
+                        .anisotropyEnable = VK_FALSE,
+                        //TODO: get max anisotropy from the limits of the physical device properties.
+                        .maxAnisotropy = 0,
+                        .compareEnable = VK_FALSE,
+                        .compareOp = VK_COMPARE_OP_ALWAYS,
+                        .minLod = 0.0f,
+                        .maxLod = 0.0f,
+                        .borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+                        .unnormalizedCoordinates = VK_FALSE,
+                };
+
+                if(auto result = device_functions.vkCreateSampler(state->device, &sampler_create_info, state->vulkan_allocator, &state->sampler); result not_eq VK_SUCCESS){
+                        puts(std::format("Unable to create sampler:{}", string_VkResult(result)).c_str());
+                }
 
                 auto const descriptor_set_bindings = std::array{
                         ubo_binding,
@@ -848,8 +1003,7 @@ struct Render_State {
                         .pBindings = descriptor_set_bindings.data(),
                 };
 
-                VkDescriptorSetLayout descriptor_set_layout;
-                if (device_functions.vkCreateDescriptorSetLayout(state->device, &descriptor_set_info, state->vulkan_allocator, &descriptor_set_layout) not_eq VK_SUCCESS) {
+                if (device_functions.vkCreateDescriptorSetLayout(state->device, &descriptor_set_info, state->vulkan_allocator, &state->descriptor_set_layout) not_eq VK_SUCCESS) {
                         std::puts("unable to create descriptor set layout");
                         std::exit(1);
                 }
@@ -865,10 +1019,9 @@ struct Render_State {
                         .pNext = nullptr,
                         .flags = {},
                         .setLayoutCount = 1,
-                        .pSetLayouts = &descriptor_set_layout,
+                        .pSetLayouts = &state->descriptor_set_layout,
                         .pushConstantRangeCount = 1,
                         .pPushConstantRanges = &ubo_push_constant_range,
-
                 };
 
                 if (device_functions.vkCreatePipelineLayout(state->device, &pipeline_layout_info, state->vulkan_allocator, &state->pipeline_layout) not_eq VK_SUCCESS) {
@@ -1013,187 +1166,7 @@ struct Render_State {
                         std::exit(40202);
                 }
 
-                // Buffers.
-
-                auto const create_buffer = [&](VkBufferUsageFlags usage, VkMemoryPropertyFlags memory_properties, VkDeviceSize size, VkBuffer *buffer, VkDeviceMemory *buffer_memory) noexcept {
-                        auto const buffer_create_info = VkBufferCreateInfo{
-                                .sType = vku::GetSType<VkBufferCreateInfo>(),
-                                .size = size,
-                                .usage = usage,
-                                .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-                        };
-                        device_functions.vkCreateBuffer(state->device, &buffer_create_info, state->vulkan_allocator, buffer);
-
-                        VkMemoryRequirements buffer_memory_requirements;
-                        device_functions.vkGetBufferMemoryRequirements(state->device, *buffer, &buffer_memory_requirements);
-
-                        auto const buffer_memory_alloc_info = VkMemoryAllocateInfo{
-                                .sType = vku::GetSType<VkMemoryAllocateInfo>(),
-                                .allocationSize = buffer_memory_requirements.size,
-                                .memoryTypeIndex = state->find_memory_type(buffer_memory_requirements.memoryTypeBits, memory_properties),
-                        };
-                        device_functions.vkAllocateMemory(state->device, &buffer_memory_alloc_info, state->vulkan_allocator, buffer_memory);
-                        device_functions.vkBindBufferMemory(state->device, *buffer, *buffer_memory, 0);
-                };
-
-                auto const buffer_copy = [&](VkBuffer src_buffer, VkBuffer dst_buffer, VkDeviceSize size) {
-                        auto const command_buffer_allocate_info = VkCommandBufferAllocateInfo{
-                                .sType = vku::GetSType<VkCommandBufferAllocateInfo>(),
-                                .commandPool = state->command_pool,
-                                .level = VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-                                .commandBufferCount = 1,
-                        };
-                        VkCommandBuffer copy_command_buffer;
-                        if (device_functions.vkAllocateCommandBuffers(state->device, &command_buffer_allocate_info, &copy_command_buffer) not_eq VK_SUCCESS) {
-                                std::puts("unable to allocate command buffers");
-                                std::exit(420);
-                        }
-
-                        auto const begin_info = VkCommandBufferBeginInfo{.sType = vku::GetSType<VkCommandBufferBeginInfo>()};
-
-                        device_functions.vkBeginCommandBuffer(copy_command_buffer, &begin_info);
-
-                        auto region = VkBufferCopy{.size = size};
-                        device_functions.vkCmdCopyBuffer(copy_command_buffer, src_buffer, dst_buffer, 1, &region);
-
-                        device_functions.vkEndCommandBuffer(copy_command_buffer);
-
-                        auto submit_info = VkSubmitInfo{
-                                .sType = vku::GetSType<VkSubmitInfo>(),
-                                .commandBufferCount = 1,
-                                .pCommandBuffers = &copy_command_buffer,
-                        };
-
-                        device_functions.vkQueueSubmit(state->graphics_queue, 1, &submit_info, nullptr);
-                        device_functions.vkDeviceWaitIdle(state->device);
-                };
-
-                auto const stage_and_copy_buffer = [create_buffer, buffer_copy, state]<typename T>(std::vector<T> data, VkBufferUsageFlags usage) {
-                        auto const buffer_size = data.size() * sizeof(T);
-                        VkDeviceMemory staging_memory;
-                        VkBuffer staging_buffer;
-                        create_buffer(VK_BUFFER_USAGE_TRANSFER_SRC_BIT | usage, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, buffer_size, &staging_buffer, &staging_memory);
-
-                        void *buffer_data_staging_memory;
-                        state->device_functions.vkMapMemory(state->device, staging_memory, 0, buffer_size, 0, &buffer_data_staging_memory);
-                        std::memcpy(buffer_data_staging_memory, data.data(), buffer_size);
-                        state->device_functions.vkUnmapMemory(state->device, staging_memory);
-
-                        VkDeviceMemory buffer_memory;
-                        VkBuffer buffer;
-                        create_buffer(VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, buffer_size, &buffer, &buffer_memory);
-                        buffer_copy(staging_buffer, buffer, buffer_size);
-
-                        struct {
-                                VkDeviceMemory memory;
-                                VkBuffer buffer;
-                        } buffer_handle_and_memory{buffer_memory, buffer};
-                        return buffer_handle_and_memory;
-                };
-
-                auto const ubo_buffer_size = sizeof(Ubo);
-
-                VkBuffer staging_terrain_ubo_buffer;
-                create_buffer(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, ubo_buffer_size, &state->terrain_ubo_buffer, &state->terrain_ubo_memory);
-                state->device_functions.vkMapMemory(state->device, state->terrain_ubo_memory, 0, ubo_buffer_size, 0, &state->terrain_ubo_mapped_memory);
-                memcpy(state->terrain_ubo_mapped_memory, &state->terrain_ubo, ubo_buffer_size);
-
-                auto const terrain_uniform_descriptor_pool_size = VkDescriptorPoolSize{.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount = max_frames_in_flieght};
-                auto const terrain_uniform_descriptor_pool_create_info = VkDescriptorPoolCreateInfo{
-                        .sType = vku::GetSType<VkDescriptorPoolCreateInfo>(),
-                        .maxSets = max_frames_in_flieght,
-                        .poolSizeCount = 1,
-                        .pPoolSizes = &terrain_uniform_descriptor_pool_size,
-                };
-
-                VkDescriptorPool terrain_uniform_descriptor_pool;
-                if (auto const result = state->device_functions.vkCreateDescriptorPool(state->device, &terrain_uniform_descriptor_pool_create_info, state->vulkan_allocator, &terrain_uniform_descriptor_pool); result not_eq VK_SUCCESS) {
-                        puts(std::format("unable to create descriptor pool {}", string_VkResult(result)).c_str());
-                        exit(429);
-                }
-
-                auto const terrain_descripotor_set_allocaiton_info = VkDescriptorSetAllocateInfo{
-                        .sType = vku::GetSType<VkDescriptorSetAllocateInfo>(),
-                        .descriptorPool = terrain_uniform_descriptor_pool,
-                        .descriptorSetCount = 1,
-                        .pSetLayouts = &descriptor_set_layout,
-                };
-
-                if (auto const result = state->device_functions.vkAllocateDescriptorSets(state->device, &terrain_descripotor_set_allocaiton_info, &state->terrain_ubo_descriptor_set); result not_eq VK_SUCCESS) {
-                        puts(std::format("unable to allocate descriptor sets {}", string_VkResult(result)).c_str());
-                        exit(420);
-                }
-
-                auto const terrain_uniform_buffer_info = VkDescriptorBufferInfo{
-                        .buffer = state->terrain_ubo_buffer,
-                        .offset = 0,
-                        .range = ubo_buffer_size,
-                };
-
-                auto const terrain_write_descriptor = VkWriteDescriptorSet{
-                        .sType = vku::GetSType<VkWriteDescriptorSet>(),
-                        .dstSet = state->terrain_ubo_descriptor_set,
-                        .dstBinding = 0,
-                        .dstArrayElement = 0,
-                        .descriptorCount = 1,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                        .pImageInfo = nullptr,
-                        .pBufferInfo = &terrain_uniform_buffer_info,
-                        .pTexelBufferView = nullptr,
-                };
-
-                state->device_functions.vkUpdateDescriptorSets(state->device, 1, &terrain_write_descriptor, 0, nullptr);
-
-                VkBuffer staging_player_ubo_buffer;
-                create_buffer(VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, ubo_buffer_size, &state->player_ubo_buffer, &state->player_ubo_memory);
-                state->device_functions.vkMapMemory(state->device, state->player_ubo_memory, 0, ubo_buffer_size, 0, &state->player_ubo_mapped_memory);
-                memcpy(state->player_ubo_mapped_memory, &state->player_ubo, ubo_buffer_size);
-
-                auto const uniform_descriptor_pool_size = VkDescriptorPoolSize{.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount = max_frames_in_flieght};
-                auto const uniform_descriptor_pool_create_info = VkDescriptorPoolCreateInfo{
-                        .sType = vku::GetSType<VkDescriptorPoolCreateInfo>(),
-                        .maxSets = max_frames_in_flieght,
-                        .poolSizeCount = 1,
-                        .pPoolSizes = &uniform_descriptor_pool_size,
-                };
-
-                VkDescriptorPool uniform_descriptor_pool;
-                if (auto const result = state->device_functions.vkCreateDescriptorPool(state->device, &uniform_descriptor_pool_create_info, state->vulkan_allocator, &uniform_descriptor_pool); result not_eq VK_SUCCESS) {
-                        puts(std::format("unable to create descriptor pool {}", string_VkResult(result)).c_str());
-                        exit(429);
-                }
-
-                auto const descripotor_set_allocaiton_info = VkDescriptorSetAllocateInfo{
-                        .sType = vku::GetSType<VkDescriptorSetAllocateInfo>(),
-                        .descriptorPool = uniform_descriptor_pool,
-                        .descriptorSetCount = 1,
-                        .pSetLayouts = &descriptor_set_layout,
-                };
-
-                if (auto const result = state->device_functions.vkAllocateDescriptorSets(state->device, &descripotor_set_allocaiton_info, &state->player_ubo_descriptor_set); result not_eq VK_SUCCESS) {
-                        puts(std::format("unable to allocate descriptor sets {}", string_VkResult(result)).c_str());
-                        exit(420);
-                }
-
-                auto const uniform_buffer_info = VkDescriptorBufferInfo{
-                        .buffer = state->player_ubo_buffer,
-                        .offset = 0,
-                        .range = ubo_buffer_size,
-                };
-
-                auto const write_descriptor = VkWriteDescriptorSet{
-                        .sType = vku::GetSType<VkWriteDescriptorSet>(),
-                        .dstSet = state->player_ubo_descriptor_set,
-                        .dstBinding = 0,
-                        .dstArrayElement = 0,
-                        .descriptorCount = 1,
-                        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-                        .pImageInfo = nullptr,
-                        .pBufferInfo = &uniform_buffer_info,
-                        .pTexelBufferView = nullptr,
-                };
-
-                state->device_functions.vkUpdateDescriptorSets(state->device, 1, &write_descriptor, 0, nullptr);
+                settup_descriptors(state);
 
                 auto const command_buffer_allocate_info = VkCommandBufferAllocateInfo{
                         .sType = vku::GetSType<VkCommandBufferAllocateInfo>(),
@@ -1269,29 +1242,14 @@ struct Render_State {
                 device_functions.vkDeviceWaitIdle(device);
         };
 
-        inline auto create_buffer(VkBufferUsageFlags usage, VkMemoryPropertyFlags memory_properties, VkDeviceSize size, VkBuffer *buffer, VkDeviceMemory *buffer_memory)const noexcept{
-                auto const buffer_create_info = VkBufferCreateInfo{
-                        .sType = vku::GetSType<VkBufferCreateInfo>(),
-                        .size = size,
-                        .usage = usage,
-                        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-                };
-                device_functions.vkCreateBuffer(device, &buffer_create_info, vulkan_allocator, buffer);
-
-                VkMemoryRequirements buffer_memory_requirements;
-                device_functions.vkGetBufferMemoryRequirements(device, *buffer, &buffer_memory_requirements);
-
-                auto const buffer_memory_alloc_info = VkMemoryAllocateInfo{
-                        .sType = vku::GetSType<VkMemoryAllocateInfo>(),
-                        .allocationSize = buffer_memory_requirements.size,
-                        .memoryTypeIndex = find_memory_type(buffer_memory_requirements.memoryTypeBits, memory_properties),
-                };
-                device_functions.vkAllocateMemory(device, &buffer_memory_alloc_info, vulkan_allocator, buffer_memory);
-                device_functions.vkBindBufferMemory(device, *buffer, *buffer_memory, 0);
-        };
 
         template <typename T> 
         constexpr auto stage_and_copy_buffer(T *data, u64 size, VkBufferUsageFlags usage) noexcept{
+                struct Buffer_Handle_and_Memory { VkDeviceMemory memory; VkBuffer buffer; }; 
+                if(data == nullptr or size == 0){
+                        return Buffer_Handle_and_Memory{VK_NULL_HANDLE, VK_NULL_HANDLE};
+                }
+
                 auto const buffer_size = size * sizeof(T);
                 VkDeviceMemory staging_memory;
                 VkBuffer staging_buffer;
@@ -1307,16 +1265,13 @@ struct Render_State {
                 create_buffer(VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, buffer_size, &buffer, &buffer_memory);
                 buffer_copy(staging_buffer, buffer, buffer_size);
 
-                struct {
-                        VkDeviceMemory memory;
-                        VkBuffer buffer;
-                } buffer_handle_and_memory{buffer_memory, buffer};
-                return buffer_handle_and_memory;
+                return Buffer_Handle_and_Memory{buffer_memory, buffer};
         };
         
-        constexpr auto load_mesh32( glm::vec3 const * vertices, u32 vertex_count, u32 const * indices, u32 index_count) noexcept{
+        constexpr auto load_mesh32( glm::vec3 const * vertices, u32 vertex_count, u32 const * indices, u32 index_count, glm::vec2 * texture_uvs = nullptr, u32 texture_uv_count = 0) noexcept{
                 auto [vertex_memory, vertex_buffer] = stage_and_copy_buffer(vertices, vertex_count, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
                 auto [index_memory, index_buffer] = stage_and_copy_buffer(indices, index_count, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+                auto [texture_uv_memory, texture_uv_buffer] = stage_and_copy_buffer(texture_uvs, texture_uv_count, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
                 return Triangle_Mesh{
                         .vertex_count = vertex_count,
                         .vertex_buffer = vertex_buffer,
@@ -1324,6 +1279,9 @@ struct Render_State {
                         .index_count = index_count,
                         .index_buffer = index_buffer,
                         .index_buffer_memory = index_memory,
+                        .texture_uv_count = texture_uv_count,
+                        .texture_uv_buffer = texture_uv_buffer,
+                        .texture_uv_buffer_memory = texture_uv_memory,
                 };
         }
 
@@ -1340,7 +1298,7 @@ struct Render_State {
                 };
         }
 
-        inline auto load_texture(int width, int height, u8 * const data)const noexcept{
+        inline auto load_texture(int width, int height, u8 * const data) noexcept{
                 VkDeviceSize image_size = width * height * 4;
                 VkBuffer staging_buffer;
                 VkDeviceMemory staging_memory;
@@ -1379,10 +1337,28 @@ struct Render_State {
                         .memoryTypeIndex = find_memory_type(memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT),
                 };
                 VkDeviceMemory memory;
-                // if(auto result = device_functions.vkAllocateMemory(device, &image_alloc_info, vulkan_allocator, *memory); result not_eq VK_SUCCESS){
-                //         puts(std::format("Unable to allocate memory for image:{}", string_VkResult(result)).c_str());
-                // }
+                if(auto result = device_functions.vkAllocateMemory(device, &image_alloc_info, vulkan_allocator, &memory); result not_eq VK_SUCCESS){
+                        puts(std::format("Unable to allocate memory for image:{}", string_VkResult(result)).c_str());
+                }
 
+                if(auto result = device_functions.vkBindImageMemory(device, image, memory, 0); result not_eq VK_SUCCESS){
+                        puts(std::format("Unable to bind memory for image:{}", string_VkResult(result)).c_str());
+                }
+
+                auto const command_buffer_allocate_info = VkCommandBufferAllocateInfo{
+                        .sType = vku::GetSType<VkCommandBufferAllocateInfo>(),
+                        .commandPool = command_pool,
+                        .level = VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+                        .commandBufferCount = 1,
+                };
+                VkCommandBuffer copy_command_buffer;
+                if (device_functions.vkAllocateCommandBuffers(device, &command_buffer_allocate_info, &copy_command_buffer) not_eq VK_SUCCESS) {
+                        std::puts("unable to allocate command buffers to load texture");
+                }
+
+                auto const begin_info = VkCommandBufferBeginInfo{.sType = vku::GetSType<VkCommandBufferBeginInfo>()};
+
+                device_functions.vkBeginCommandBuffer(copy_command_buffer, &begin_info);
                 auto const buffer_image_copy = VkBufferImageCopy{
                         .bufferRowLength = 0,
                         .bufferImageHeight = 0,
@@ -1396,38 +1372,127 @@ struct Render_State {
                         .imageExtent = image_extent,
                 };
 
-                auto const command_buffer_allocate_info = VkCommandBufferAllocateInfo{
-                        .sType = vku::GetSType<VkCommandBufferAllocateInfo>(),
-                        .commandPool = command_pool,
-                        .level = VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-                        .commandBufferCount = 1,
+                auto const barrier = VkImageMemoryBarrier{
+                        .sType = vku::GetSType<VkImageMemoryBarrier>(),
+                        .srcAccessMask = 0,
+                        .dstAccessMask = 0,
+                        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+                        .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                        .image = image,
+                        .subresourceRange = {
+                                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                                .baseMipLevel = 0,
+                                .levelCount = 1,
+                                .baseArrayLayer = 0,
+                                .layerCount = 1,
+                        },
                 };
-                VkCommandBuffer copy_command_buffer;
-                if (device_functions.vkAllocateCommandBuffers(device, &command_buffer_allocate_info, &copy_command_buffer) not_eq VK_SUCCESS) {
-                        std::puts("unable to allocate command buffers");
-                        std::exit(420);
-                }
+                device_functions.vkCmdPipelineBarrier(copy_command_buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,0, nullptr, 0, nullptr, 1, &barrier);
 
-                auto const begin_info = VkCommandBufferBeginInfo{.sType = vku::GetSType<VkCommandBufferBeginInfo>()};
-
-                device_functions.vkBeginCommandBuffer(copy_command_buffer, &begin_info);
-                vkCmdCopyBufferToImage(copy_command_buffer, staging_buffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &buffer_image_copy);
+                device_functions.vkCmdCopyBufferToImage(copy_command_buffer, staging_buffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &buffer_image_copy);
                 device_functions.vkEndCommandBuffer(copy_command_buffer);
                 auto submit_info = VkSubmitInfo{
                         .sType = vku::GetSType<VkSubmitInfo>(),
                         .commandBufferCount = 1,
                         .pCommandBuffers = &copy_command_buffer,
                 };
+
+                auto const image_to_sampled_barrier = VkImageMemoryBarrier{
+                        .sType = vku::GetSType<VkImageMemoryBarrier>(),
+                        .srcAccessMask = 0,
+                        .dstAccessMask = 0,
+                        .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                        .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                        .image = image,
+                        .subresourceRange = {
+                                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                                .baseMipLevel = 0,
+                                .levelCount = 1,
+                                .baseArrayLayer = 0,
+                                .layerCount = 1,
+                        },
+                };
+                device_functions.vkCmdPipelineBarrier(copy_command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,0, nullptr, 0, nullptr, 1, &image_to_sampled_barrier);
+
                 device_functions.vkQueueSubmit(graphics_queue, 1, &submit_info, nullptr);
-                device_functions.vkDeviceWaitIdle(device);
+                device_functions.vkQueueWaitIdle(graphics_queue);
+                device_functions.vkFreeCommandBuffers(device, command_pool, 1, &copy_command_buffer);
 
+                auto const view_create_info = VkImageViewCreateInfo{
+                        .sType = vku::GetSType<VkImageViewCreateInfo>(),
+                        .image = image,
+                        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+                        .format = image_create_info.format,
+                        .subresourceRange = image_to_sampled_barrier.subresourceRange,
+                };
+                VkImageView view;
+                if (auto result = device_functions.vkCreateImageView(device, &view_create_info, vulkan_allocator, &view);result not_eq VK_SUCCESS) {
+                        puts(std::format("Unable to create image views:{}", string_VkResult(result)).c_str());
+                }
 
-               Image texture; 
+                //Image sampler descriptor object.
+                auto const sampler_pool_size = VkDescriptorPoolSize{.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount = max_frames_in_flieght};
+                //TODO collapse all the descripotrs into one of these and pass in the pool sizes as an array.
+                auto const sampler_pool_create_info = VkDescriptorPoolCreateInfo{
+                        .sType = vku::GetSType<VkDescriptorPoolCreateInfo>(),
+                        .maxSets = max_frames_in_flieght,
+                        .poolSizeCount = 1,
+                        .pPoolSizes = &sampler_pool_size,
+                };
+
+                VkDescriptorPool sampler_pool;
+                if (auto const result = device_functions.vkCreateDescriptorPool(device, &sampler_pool_create_info, vulkan_allocator, &sampler_pool); result not_eq VK_SUCCESS) {
+                        puts(std::format("unable to create descriptor for image sampler pool {}", string_VkResult(result)).c_str());
+                        exit(429);
+                }
+
+                auto const sampler_descriptor_allocation_info = VkDescriptorSetAllocateInfo{
+                        .sType = vku::GetSType<VkDescriptorSetAllocateInfo>(),
+                        .descriptorPool = sampler_pool,
+                        .descriptorSetCount = 1,
+                        .pSetLayouts = &descriptor_set_layout,
+                };
+
+                if (auto const result = device_functions.vkAllocateDescriptorSets(device, &sampler_descriptor_allocation_info, &texture_sampler_descriptor_set); result not_eq VK_SUCCESS) {
+                        puts(std::format("unable to allocate image sampler descriptor set {}", string_VkResult(result)).c_str());
+                        exit(420);
+                }
+
+                auto const image_sampler_info = VkDescriptorImageInfo{
+                        .sampler = sampler,
+                        .imageView = view,
+                        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                };
+
+                auto const write_sampler_descriptor = VkWriteDescriptorSet{
+                        .sType = vku::GetSType<VkWriteDescriptorSet>(),
+                        .dstSet = texture_sampler_descriptor_set,
+                        .dstBinding = 0,
+                        .dstArrayElement = 0,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                        .pImageInfo = &image_sampler_info,
+                        .pBufferInfo = nullptr,
+                        .pTexelBufferView = nullptr,
+                };
+
+                device_functions.vkUpdateDescriptorSets(device, 1, &write_sampler_descriptor, 0, nullptr);
+
+                return Texture{
+                        .image = image,
+                        .memory = memory,
+                        .view = view,
+                        .sampler = sampler,
+                };
         }
 
         //TODO: this is leaking memory.
         inline void record_command_buffers(u32 swapchain_image_index) const noexcept {
-                auto const clear_values = std::array{
+                VkClearValue const clear_values[] = { 
                         VkClearValue{.color = VkClearColorValue{.float32 = {1, 0, 1, 0}}},
                         VkClearValue{.depthStencil = VkClearDepthStencilValue{.depth = 1, .stencil = 0}},
                 };
@@ -1450,8 +1515,8 @@ struct Render_State {
                         .renderPass = render_pass,
                         .framebuffer = framebuffer,
                         .renderArea = VkRect2D{.offset{0, 0}, .extent = swapchain_extent},
-                        .clearValueCount = clear_values.size(),
-                        .pClearValues = clear_values.data(),
+                        .clearValueCount = 2,
+                        .pClearValues = clear_values,
                 };
                 device_functions.vkCmdBeginRenderPass(command_buffer, &render_pass_begin_info, VkSubpassContents::VK_SUBPASS_CONTENTS_INLINE);
 
@@ -1460,20 +1525,24 @@ struct Render_State {
                 device_functions.vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
 
                 VkDeviceSize offsets = 0;
-                device_functions.vkCmdBindVertexBuffers(command_buffer, 0, 1, &player_mesh.vertex_buffer, &offsets);
-                device_functions.vkCmdBindIndexBuffer(command_buffer, player_mesh.index_buffer, 0, VkIndexType::VK_INDEX_TYPE_UINT32);
-                device_functions.vkCmdBindDescriptorSets(command_buffer, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &player_ubo_descriptor_set, 0, nullptr);
-                device_functions.vkCmdDrawIndexed(command_buffer, player_mesh.index_count, 1, 0, 0, 0);
+                // device_functions.vkCmdBindVertexBuffers(command_buffer, 0, 1, &player_mesh.vertex_buffer, &offsets);
+                // device_functions.vkCmdBindIndexBuffer(command_buffer, player_mesh.index_buffer, 0, VkIndexType::VK_INDEX_TYPE_UINT32);
+                // device_functions.vkCmdBindDescriptorSets(command_buffer, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 2, &player_ubo_descriptor_set, 0, nullptr);
+                // device_functions.vkCmdDrawIndexed(command_buffer, player_mesh.index_count, 1, 0, 0, 0);
 
-                device_functions.vkCmdBindVertexBuffers(command_buffer, 0, 1, &terrain_mesh.vertex_buffer, &offsets);
+                VkBuffer const terrain_mesh_buffers[] = {terrain_mesh.vertex_buffer, terrain_mesh.texture_uv_buffer };
+                VkDescriptorSet const terrain_descriptors[] = {player_ubo_descriptor_set, texture_sampler_descriptor_set };
+                device_functions.vkCmdBindVertexBuffers(command_buffer, 0, 2, terrain_mesh_buffers, &offsets);
                 device_functions.vkCmdBindIndexBuffer(command_buffer, terrain_mesh.index_buffer, 0, VkIndexType::VK_INDEX_TYPE_UINT32);
-                device_functions.vkCmdBindDescriptorSets(command_buffer, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &terrain_ubo_descriptor_set, 0, nullptr);
+                device_functions.vkCmdBindDescriptorSets(command_buffer, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 2, terrain_descriptors, 0, nullptr);
                 device_functions.vkCmdDrawIndexed(command_buffer, terrain_mesh.index_count, 1, 0, 0, 0);
 
-                device_functions.vkCmdBindVertexBuffers(command_buffer, 0, 1, &terrain_mesh.vertex_buffer, &offsets);
-                device_functions.vkCmdBindIndexBuffer(command_buffer, terrain_mesh.index_buffer, 0, VkIndexType::VK_INDEX_TYPE_UINT32);
-                device_functions.vkCmdBindDescriptorSets(command_buffer, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &player_ubo_descriptor_set, 0, nullptr);
-                device_functions.vkCmdDrawIndexed(command_buffer, terrain_mesh.index_count, 1, 0, 0, 0);
+                // VkBuffer const ui_mesh_buffers[] = {ui_mesh.vertex_buffer, ui_mesh.texture_uv_buffer};
+                // VkDescriptorSet const ui_descriptors[] = {player_ubo_descriptor_set, texture_sampler_descriptor_set };
+                // device_functions.vkCmdBindVertexBuffers(command_buffer, 0, 2, ui_mesh_buffers, &offsets);
+                // device_functions.vkCmdBindIndexBuffer(command_buffer, ui_mesh.index_buffer, 0, VkIndexType::VK_INDEX_TYPE_UINT32);
+                // device_functions.vkCmdBindDescriptorSets(command_buffer, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 2, ui_descriptors, 0, nullptr);
+                // device_functions.vkCmdDrawIndexed(command_buffer, ui_mesh.index_count, 1, 0, 0, 0);
 
                 device_functions.vkCmdEndRenderPass(command_buffer);
                 device_functions.vkEndCommandBuffer(command_buffer);

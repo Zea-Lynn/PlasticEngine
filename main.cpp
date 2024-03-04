@@ -68,7 +68,11 @@ int main() noexcept {
 
         {
                 auto [points, indices] = create_platform();
-                renderer.terrain_mesh = renderer.load_mesh32(points, 4, indices, 6);
+                auto uvs = std::vector<glm::vec2>{{-1,-1}, {1,-1}, {-1,1}, {1,1}};
+                renderer.terrain_mesh = renderer.load_mesh32(points, 4, indices, 6, uvs.data(), uvs.size());
+                int x, y, comp;
+                auto texture = stbi_load("./sometexture.png",&x, &y, nullptr, STBI_rgb_alpha);
+                renderer.terrain_texture = renderer.load_texture(x, y, texture);
         }
         {
                 // auto [points, indices] = create_icosphere(); 
