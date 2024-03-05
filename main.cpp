@@ -16,7 +16,7 @@ int main() noexcept {
         // TODO: maybe figure out a better way.
         smol_GLTF gltf; 
         smol_allocator smol_allocator = {.user_data = nullptr, .allocate = [](auto user_data, auto size){return malloc(size);}, .free = [](auto user_data, auto ptr){free(ptr);}};
-        if(not smol_parse_GLTF(monkey_glb_len, monkey_glb, &gltf, smol_allocator)){
+        if(not smol_parse_GLTF(cube_glb_len, cube_glb, &gltf, smol_allocator)){
                 puts("error parsing gltf, oopsie");
                 exit(420);
         }
@@ -26,6 +26,7 @@ int main() noexcept {
         size_t pos_index_byte_length = 0;
         size_t pos_index_offset = 0; 
         size_t pos_index_count = 0;
+        size_t uv_offset = 0;
         for(auto attribute_index = 0; attribute_index < gltf.meshes[0].primitives[0].attribute_count; ++attribute_index){
                 auto attribute = gltf.meshes->primitives->attributes[attribute_index];
                 if(attribute.name == smol_POSITION){
@@ -37,9 +38,14 @@ int main() noexcept {
                         pos_index_byte_length = index_view.byte_length;
                         pos_index_offset = index_view.byte_offset;
                         pos_index_count = gltf.accessors[gltf.meshes->primitives->indices].count;
+
+                }
+                if(attribute.name == smol_TEXCOORD){
+                        uv_offset = gltf.buffer_views[gltf.accessors[attribute.accessor].buffer_view].byte_offset;
                 }
         }
         auto gltf_points = reinterpret_cast<glm::vec3 const *>(gltf.data + pos_offset);
+        auto gltf_texcoords = reinterpret_cast<glm::vec2 const *>(gltf.data + uv_offset);
         auto gltf_indices = std::vector<u32>(pos_index_count);
         for(auto pos_index_index = 0; pos_index_index < pos_index_count; ++pos_index_index){
                 gltf_indices[pos_index_index] = static_cast<u32>(reinterpret_cast<u16 const *>(gltf.data + pos_index_offset)[pos_index_index]);
@@ -69,19 +75,17 @@ int main() noexcept {
         {
                 auto [points, indices] = create_platform();
                 auto uvs = std::vector<glm::vec2>{{-1,-1}, {1,-1}, {-1,1}, {1,1}};
-                renderer.terrain_mesh = renderer.load_mesh32(points, 4, indices, 6, uvs.data(), uvs.size());
+                renderer.terrain_mesh = renderer.load_mesh32(points, 4, indices, 6, uvs.data());
                 int x, y, comp;
                 auto texture = stbi_load("./sometexture.png",&x, &y, nullptr, STBI_rgb_alpha);
-                renderer.terrain_texture = renderer.load_texture(x, y, texture);
+                if(texture == nullptr){
+                        puts("unable to load texture");
+                        exit(420);
+                }
+                renderer.load_terrain_texture(x, y, texture);
         }
         {
-                // auto [points, indices] = create_icosphere(); 
-                // render_state.player_mesh = load_mesh32(&render_state, points.data(), points.size(), indices.data(), indices.size());
-                // auto [points, indices] = create_icosphere(); 
-                renderer.player_mesh = renderer.load_mesh32(gltf_points, pos_count, gltf_indices.data(), gltf_indices.size());
-        }
-        {
-                // render_state.terrain_texture = load_texture(&render_state, "sometexture.png");
+                renderer.player_mesh = renderer.load_mesh32(gltf_points, pos_count, gltf_indices.data(), gltf_indices.size(), gltf_texcoords);
         }
 
         glfwSetWindowUserPointer(window, &renderer);
@@ -128,7 +132,7 @@ int main() noexcept {
                 auto gui_data = gui.end();
                 auto gui_vertices = std::vector<glm::vec3>(gui_data.vertices.size());
                 for(auto i = 0; i < gui_vertices.size(); ++i) gui_vertices[i] = glm::vec3(gui_data.vertices[i], 0);
-                renderer.ui_mesh = renderer.load_mesh32(gui_vertices.data(), gui_vertices.size(), gui_data.indices.data(), gui_data.indices.size());
+                // renderer.ui_mesh = renderer.load_mesh32(gui_vertices.data(), gui_vertices.size(), gui_data.indices.data(), gui_data.indices.size());
 
                 // render_state.ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
                 // render_state.ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f,0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
@@ -136,7 +140,7 @@ int main() noexcept {
                 // auto const model = glm::rotate(glm::mat4(1.0f), time * glm::radians(180.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
                 // render_state.ubo.model = model;
-                memcpy(renderer.player_ubo_mapped_memory, &renderer.player_ubo, sizeof(Ubo));
+                // memcpy(renderer.player_ubo_mapped_memory, &renderer.player_ubo, sizeof(Ubo));
                 memcpy(renderer.terrain_ubo_mapped_memory, &renderer.terrain_ubo, sizeof(Ubo));
 
                 auto mouse_state = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);

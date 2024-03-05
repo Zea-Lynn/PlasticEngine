@@ -3,7 +3,7 @@ project(plastic CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 # set(CMAKE_CXX_FLAGS "-O3 -mavx512f -mavx512dq -mavx512bw -mavx512vbmi -mavx512vbmi2 -mavx512vl")
-set(CMAKE_CXX_FLAGS "-O0 -g -fuse-ld=mold")
+set(CMAKE_CXX_FLAGS "-O0 -g")
 set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
 set(CMAKE_BUILD_TYPE=Debug)
 
@@ -29,6 +29,7 @@ add_subdirectory("Vulkan-Headers")
 add_subdirectory("Vulkan-Utility-Libraries")
 
 add_executable(plastic)
+target_link_options(plastic PRIVATE -fuse-ld=mold)
 target_precompile_headers(plastic PUBLIC includes.h)
 # TODO: modules when they work.
 # set(CMAKE_CXX_STANDARD_REQUIRED ON)
