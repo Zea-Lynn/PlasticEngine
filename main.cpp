@@ -16,7 +16,7 @@ int main() noexcept {
         // TODO: maybe figure out a better way.
         smol_GLTF gltf; 
         smol_allocator smol_allocator = {.user_data = nullptr, .allocate = [](auto user_data, auto size){return malloc(size);}, .free = [](auto user_data, auto ptr){free(ptr);}};
-        if(not smol_parse_GLTF(cube_glb_len, cube_glb, &gltf, smol_allocator)){
+        if(not smol_parse_GLTF(monkey_glb_len, monkey_glb, &gltf, smol_allocator)){
                 puts("error parsing gltf, oopsie");
                 exit(420);
         }
@@ -75,7 +75,7 @@ int main() noexcept {
         {
                 auto [points, indices] = create_platform();
                 auto uvs = std::vector<glm::vec2>{{-1,-1}, {1,-1}, {-1,1}, {1,1}};
-                renderer.terrain_mesh = renderer.load_mesh32(points, 4, indices, 6, uvs.data());
+                renderer.terrain_mesh = renderer.load_static_mesh32(points, 4, indices, 6, uvs.data());
                 int x, y, comp;
                 auto texture = stbi_load("./sometexture.png",&x, &y, nullptr, STBI_rgb_alpha);
                 if(texture == nullptr){
@@ -85,7 +85,7 @@ int main() noexcept {
                 renderer.load_terrain_texture(x, y, texture);
         }
         {
-                renderer.player_mesh = renderer.load_mesh32(gltf_points, pos_count, gltf_indices.data(), gltf_indices.size(), gltf_texcoords);
+                renderer.player_mesh = renderer.load_static_mesh32(gltf_points, pos_count, gltf_indices.data(), gltf_indices.size(), gltf_texcoords);
         }
 
         glfwSetWindowUserPointer(window, &renderer);
@@ -98,7 +98,7 @@ int main() noexcept {
 
         glfwSetWindowCloseCallback(window, [](GLFWwindow *window) { exit(0); });
 
-        auto gui = GUI::initalize();
+        auto ui = UI::initalize();
 
         // for (auto i = 0; i < renderer.swapchain_image_count; ++i) renderer.record_command_buffers(i);
 
@@ -110,6 +110,7 @@ int main() noexcept {
         renderer.player_ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(1,0,0));
         renderer.terrain_ubo.camera = projection * view;
         renderer.terrain_ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(1,0,0)) * glm::translate(glm::mat4(1.0f), {-.5f, -.5f, -.5f});
+
         renderer.gui_ubo.camera = glm::identity<glm::mat4>();
         renderer.gui_ubo.model = glm::identity<glm::mat4>();
 
@@ -123,16 +124,16 @@ int main() noexcept {
         while (true /* not glfwWindowShouldClose(window) */) {
                 glfwPollEvents();
 
-                gui.begin(1, 1, 0,0, key::none);
+                ui.begin(1, 1, 0,0, key::none);
 
-                if(gui.button(&something_button_id, "Something")){
+                if(ui.button(&something_button_id, "Something")){
                         //TODO: do button stuff.
                 }
 
-                auto gui_data = gui.end();
+                auto gui_data = ui.finish_and_render();
                 auto gui_vertices = std::vector<glm::vec3>(gui_data.vertices.size());
                 for(auto i = 0; i < gui_vertices.size(); ++i) gui_vertices[i] = glm::vec3(gui_data.vertices[i], 0);
-                // renderer.ui_mesh = renderer.load_mesh32(gui_vertices.data(), gui_vertices.size(), gui_data.indices.data(), gui_data.indices.size());
+                renderer.ui_mesh = renderer.load_static_mesh32(gui_vertices.data(), gui_vertices.size(), gui_data.indices.data(), gui_data.indices.size(), gui_data.texuvs.data());
 
                 // render_state.ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
                 // render_state.ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f,0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
@@ -140,8 +141,9 @@ int main() noexcept {
                 // auto const model = glm::rotate(glm::mat4(1.0f), time * glm::radians(180.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
                 // render_state.ubo.model = model;
-                // memcpy(renderer.player_ubo_mapped_memory, &renderer.player_ubo, sizeof(Ubo));
+                memcpy(renderer.player_ubo_mapped_memory, &renderer.player_ubo, sizeof(Ubo));
                 memcpy(renderer.terrain_ubo_mapped_memory, &renderer.terrain_ubo, sizeof(Ubo));
+                memcpy(renderer.ui_ubo_mapped_memory, &renderer.gui_ubo, sizeof(Ubo));
 
                 auto mouse_state = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);
                 if(mouse_state == GLFW_PRESS){
@@ -166,7 +168,7 @@ int main() noexcept {
 
                 renderer.draw_frame();
 
-                // std::this_thread::sleep_for(std::chrono::milliseconds(33));
+                std::this_thread::sleep_for(std::chrono::milliseconds(33));
                 // while (std::getchar() not_eq '\n')
                 //         ;
         }

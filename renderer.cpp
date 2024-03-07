@@ -25,6 +25,8 @@ struct Instance_Functions {
 
 struct Device_Functions {
         PFN_vkGetDeviceQueue vkGetDeviceQueue;
+        PFN_vkDestroyBuffer vkDestroyBuffer;
+        PFN_vkFreeMemory vkFreeMemory;
         PFN_vkCreateSampler vkCreateSampler;
         PFN_vkCreateSwapchainKHR vkCreateSwapchainKHR;
         PFN_vkGetSwapchainImagesKHR vkGetSwapchainImagesKHR;
@@ -85,6 +87,13 @@ struct Ubo {
         glm::mat4 model;
 };
 
+struct Triangle_Mesh2{
+        u64 index_count;
+        u64 max_vertices;
+        u64 max_indices;
+        VkDeviceMemory memory;
+        VkBuffer buffer;
+};
 
 struct Triangle_Mesh {
         u64 vertex_count;
@@ -155,6 +164,7 @@ struct Render_State {
         VkSemaphore *render_finished_semaphores;
         VkFence *image_in_flieght_fences;
         VkImage *depth_images;
+
         VkDeviceMemory *depth_images_memory;
         VkImageView *depth_images_views;
         VkSampler sampler;
@@ -167,16 +177,22 @@ struct Render_State {
         u32 vertex_count;
         VkBuffer vertex_buffer;
         VkDeviceMemory vertex_buffer_memory;
+
         u32 index_count;
         VkBuffer index_buffer;
         VkDeviceMemory index_buffer_memory;
+
+        VkDeviceMemory memory_block;
+
         Line_Mesh bounding_sphere_mesh;
         Line_Mesh debug_mesh;
         Line_Mesh selected_object_mesh;
         Texture terrain_texture;
+
         Triangle_Mesh terrain_mesh;
         Triangle_Mesh player_mesh;
         Triangle_Mesh ui_mesh;
+
         u32 opaque_mesh_count;
         VkBuffer player_ubo_buffer;
         VkDeviceMemory player_ubo_memory;
@@ -219,6 +235,8 @@ struct Render_State {
         inline void load_device_functions() noexcept {
                 vkGetDeviceProcAddr = load_instance_function<PFN_vkGetDeviceProcAddr>("vkGetDeviceProcAddr");
                 device_functions.vkGetDeviceQueue = load_device_function<PFN_vkGetDeviceQueue>("vkGetDeviceQueue");
+                device_functions.vkDestroyBuffer = load_device_function<PFN_vkDestroyBuffer>("vkDestroyBuffer");
+                device_functions.vkFreeMemory = load_device_function<PFN_vkFreeMemory>("vkFreeMemory");
                 device_functions.vkCreateSampler = load_device_function<PFN_vkCreateSampler>("vkCreateSampler");
                 device_functions.vkCreateSwapchainKHR = load_device_function<PFN_vkCreateSwapchainKHR>("vkCreateSwapchainKHR");
                 device_functions.vkGetSwapchainImagesKHR = load_device_function<PFN_vkGetSwapchainImagesKHR>("vkGetSwapchainImagesKHR");
@@ -339,8 +357,8 @@ struct Render_State {
                 };
 
                 VkDescriptorSet * descriptor_sets[] = {
-                        &state->terrain_descriptor_set,
                         &state->player_descriptor_set,
+                        &state->terrain_descriptor_set,
                         &state->ui_descriptor_set,
                 };
 
@@ -352,20 +370,20 @@ struct Render_State {
                 }
 
                 VkBuffer* ubo_buffers[] = {
-                        &state->terrain_ubo_buffer,
                         &state->player_ubo_buffer,
+                        &state->terrain_ubo_buffer,
                         &state->ui_ubo_buffer,
                 };
 
                 VkDeviceMemory * ubo_buffer_memory[] = {
-                        &state->terrain_ubo_memory,
                         &state->player_ubo_memory,
+                        &state->terrain_ubo_memory,
                         &state->ui_ubo_memory,
                 };
 
                 void ** ubo_mapped_buffer_memory[] = {
-                        &state->terrain_ubo_mapped_memory,
                         &state->player_ubo_mapped_memory,
+                        &state->terrain_ubo_mapped_memory,
                         &state->ui_ubo_mapped_memory,
                 };
 
@@ -1253,16 +1271,18 @@ struct Render_State {
                 create_buffer(VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, buffer_size, &buffer, &buffer_memory);
                 buffer_copy(staging_buffer, buffer, buffer_size);
 
+                if(staging_buffer) device_functions.vkDestroyBuffer(device, staging_buffer, vulkan_allocator);
+                if(staging_memory) device_functions.vkFreeMemory(device, staging_memory, vulkan_allocator);
+
                 return Buffer_Handle_and_Memory{buffer_memory, buffer};
         };
-        
-        constexpr auto load_mesh32( glm::vec3 const * vertices, u32 vertex_count, u32 const * indices, u32 index_count, glm::vec2 const * texture_uvs) noexcept{
+
+        constexpr auto load_static_mesh32( glm::vec3 const * vertices, u32 vertex_count, u32 const * indices, u32 index_count, glm::vec2 const * texuvs) noexcept{
                 /* TODO: just put these all into one buffer and store the offsets of each thing so we aren't allocated tones of buffers when we have more things. */
-                auto [vertex_memory, vertex_buffer] = stage_and_copy_buffer(vertices, vertex_count, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-                auto [texture_uv_memory, texture_uv_buffer] = stage_and_copy_buffer(texture_uvs, vertex_count, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-
-                auto [index_memory, index_buffer] = stage_and_copy_buffer(indices, index_count, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-
+                auto [vertex_memory, vertex_buffer] = stage_and_copy_buffer(vertices, vertex_count, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+                auto [texuv_memory, texuv_buffer] = stage_and_copy_buffer(texuvs, vertex_count, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+                auto [texcol_memory, texcol_buffer] = stage_and_copy_buffer(texuvs, vertex_count, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+                auto [index_memory, index_buffer] = stage_and_copy_buffer(indices, index_count, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
                 return Triangle_Mesh{
                         .vertex_count = vertex_count,
                         .vertex_buffer = vertex_buffer,
@@ -1270,22 +1290,39 @@ struct Render_State {
                         .index_count = index_count,
                         .index_buffer = index_buffer,
                         .index_buffer_memory = index_memory,
-                        .texture_uv_buffer = texture_uv_buffer,
-                        .texture_uv_buffer_memory = texture_uv_memory,
+                        .texture_uv_buffer = texuv_buffer,
+                        .texture_uv_buffer_memory = texuv_memory,
                 };
         }
 
-        constexpr auto load_mesh64(glm::vec3 const * vertices, u64 vertex_count, u64 const * indices, u64 index_count)noexcept{
-                auto [vertex_memory, vertex_buffer] = stage_and_copy_buffer(vertices, vertex_count, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
-                auto [index_memory, index_buffer] = stage_and_copy_buffer(indices, index_count, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-                return Triangle_Mesh{
-                        .vertex_count = vertex_count,
-                        .vertex_buffer = vertex_buffer,
-                        .vertex_buffer_memory = vertex_memory,
-                        .index_count = index_count,
-                        .index_buffer = index_buffer,
-                        .index_buffer_memory = index_memory,
+        constexpr auto add_mesh32(u32 max_vertices, u32 max_indices) noexcept{
+                auto mesh = Triangle_Mesh2{.max_vertices = max_vertices, .max_indices = max_indices};
+                constexpr size_t sizes[] = {sizeof(glm::vec3), sizeof(glm::vec2), sizeof(glm::vec4), sizeof(glm::vec3)};
+                VkDeviceSize buffer_size = max_indices * sizeof(u32);
+                for(auto size : sizes) buffer_size +=(size * max_vertices);
+
+                auto const buffer_create_info = VkBufferCreateInfo{
+                        .sType = vku::GetSType<VkBufferCreateInfo>(),
+                        .size = buffer_size,
+                        .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
                 };
+                device_functions.vkCreateBuffer(device, &buffer_create_info, vulkan_allocator, &mesh.buffer);
+
+                VkMemoryRequirements buffer_memory_requirements;
+                device_functions.vkGetBufferMemoryRequirements(device, mesh.buffer, &buffer_memory_requirements);
+
+                auto const buffer_memory_alloc_info = VkMemoryAllocateInfo{
+                        .sType = vku::GetSType<VkMemoryAllocateInfo>(),
+                        .allocationSize = buffer_memory_requirements.size,
+                        .memoryTypeIndex = find_memory_type(buffer_memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT),
+                };
+                device_functions.vkAllocateMemory(device, &buffer_memory_alloc_info, vulkan_allocator, &mesh.memory);
+                device_functions.vkBindBufferMemory(device, mesh.buffer, mesh.memory, 0);
+        }
+
+        constexpr auto load_mesh_data32(u32 mesh_index, u32 index_count, u32 * indices, u32 vertex_count, vec3 * positions, vec2 * texuvs, vec4 * colors, vec3 * normals) noexcept{
+
         }
 
         inline void load_terrain_texture(int width, int height, u8 * const data) noexcept{
@@ -1502,17 +1539,17 @@ struct Render_State {
                 device_functions.vkCmdBindDescriptorSets(command_buffer, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &player_descriptor_set, 0, nullptr);
                 device_functions.vkCmdDrawIndexed(command_buffer, player_mesh.index_count, 1, 0, 0, 0);
 
-                // VkBuffer const terrain_mesh_buffers[] = {terrain_mesh.vertex_buffer, terrain_mesh.texture_uv_buffer };
-                // device_functions.vkCmdBindVertexBuffers(command_buffer, 0, 2, terrain_mesh_buffers, offsets);
-                // device_functions.vkCmdBindIndexBuffer(command_buffer, terrain_mesh.index_buffer, 0, VkIndexType::VK_INDEX_TYPE_UINT32);
-                // device_functions.vkCmdBindDescriptorSets(command_buffer, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &terrain_descriptor_set, 0, nullptr);
-                // device_functions.vkCmdDrawIndexed(command_buffer, terrain_mesh.index_count, 1, 0, 0, 0);
+                VkBuffer const terrain_mesh_buffers[] = {terrain_mesh.vertex_buffer, terrain_mesh.texture_uv_buffer };
+                device_functions.vkCmdBindVertexBuffers(command_buffer, 0, 2, terrain_mesh_buffers, offsets);
+                device_functions.vkCmdBindIndexBuffer(command_buffer, terrain_mesh.index_buffer, 0, VkIndexType::VK_INDEX_TYPE_UINT32);
+                device_functions.vkCmdBindDescriptorSets(command_buffer, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &terrain_descriptor_set, 0, nullptr);
+                device_functions.vkCmdDrawIndexed(command_buffer, terrain_mesh.index_count, 1, 0, 0, 0);
 
-                // VkBuffer const ui_mesh_buffers[] = {ui_mesh.vertex_buffer, ui_mesh.texture_uv_buffer};
-                // device_functions.vkCmdBindVertexBuffers(command_buffer, 0, 2, ui_mesh_buffers, offsets);
-                // device_functions.vkCmdBindIndexBuffer(command_buffer, ui_mesh.index_buffer, 0, VkIndexType::VK_INDEX_TYPE_UINT32);
-                // device_functions.vkCmdBindDescriptorSets(command_buffer, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &ui_descriptor_set, 0, nullptr);
-                // device_functions.vkCmdDrawIndexed(command_buffer, ui_mesh.index_count, 1, 0, 0, 0);
+                VkBuffer const ui_mesh_buffers[] = {ui_mesh.vertex_buffer, ui_mesh.texture_uv_buffer};
+                device_functions.vkCmdBindVertexBuffers(command_buffer, 0, 2, ui_mesh_buffers, offsets);
+                device_functions.vkCmdBindIndexBuffer(command_buffer, ui_mesh.index_buffer, 0, VkIndexType::VK_INDEX_TYPE_UINT32);
+                device_functions.vkCmdBindDescriptorSets(command_buffer, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &ui_descriptor_set, 0, nullptr);
+                device_functions.vkCmdDrawIndexed(command_buffer, ui_mesh.index_count, 0, 0, 0, 0);
 
                 device_functions.vkCmdEndRenderPass(command_buffer);
                 device_functions.vkEndCommandBuffer(command_buffer);
