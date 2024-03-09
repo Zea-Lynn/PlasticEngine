@@ -100,7 +100,7 @@ struct UI {
         }
 
         struct Rect{
-                f32 x,y,w,h,tu = 0,tv = 0,tw = 1,th = 1;
+                f32 x = -1,y = -1,w = 0,h = 0,tu = 0,tv = 0,tw = 1,th = 1;
                 Color color;
         };
 
@@ -109,7 +109,7 @@ struct UI {
                 std::vector<Texuv> texuvs;
                 std::vector<Color> colors;
                 std::vector<u32> indices;
-                constexpr auto add_rect(Rect rect, u32 index) {
+                constexpr auto add_rect(Rect rect, u32 starting_vertex_index) {
                         positions.push_back({rect.x,            rect.y});
                         positions.push_back({rect.x+rect.w,     rect.y});
                         positions.push_back({rect.x,            rect.y+rect.h});
@@ -119,17 +119,17 @@ struct UI {
                         texuvs.push_back({rect.tu + rect.tw,    rect.tv});
                         texuvs.push_back({rect.tu,              rect.tv + rect.th});
                         texuvs.push_back({rect.tu + rect.tw,    rect.tv + rect.th});
-                        indices.push_back(index+0);
-                        indices.push_back(index+1);
-                        indices.push_back(index+2);
-                        indices.push_back(index+2);
-                        indices.push_back(index+1);
-                        indices.push_back(index+3);
+                        indices.push_back(starting_vertex_index+0);
+                        indices.push_back(starting_vertex_index+1);
+                        indices.push_back(starting_vertex_index+2);
+                        indices.push_back(starting_vertex_index+2);
+                        indices.push_back(starting_vertex_index+1);
+                        indices.push_back(starting_vertex_index+3);
                 }
         };
 
 
-        constexpr auto finish_and_render() noexcept {
+        constexpr auto finish_and_draw() noexcept {
                 Mesh mesh;
                 //draw grid.
 
@@ -144,49 +144,8 @@ struct UI {
                         }
                 }
 
-                mesh.add_rect({.x = -1, .y =  -1, .w =  2 * (2.0/5), .h = 2, .color = {1, 0, 1, 1}}, 0);
-
-
-
-                // auto grid_col_size = (grid.width / (f32)100);
-                // auto grid_row_size = (grid.height / (f32)grid.rows);
-                // size_t current_index = 4;
-                // //draw elemens on grid.
-                // for(auto i =0; i < elements_to_render_count and elements_to_render[i] >= 0; ++i){
-                //         s8 id = elements_to_render[i];
-                //         f32 element_x = grid.x + (elements[id].position.col * grid_col_size);
-                //         f32 element_y = grid.y + (elements[id].position.row * grid_row_size);
-                //         f32 element_width = elements[id].position.width * grid_col_size; 
-                //         f32 element_height = elements[id].position.height * grid_row_size;
-                //         mesh.vertices.push_back({element_x, element_y});
-                //         mesh.vertices.push_back({element_x + element_width, element_y});
-                //         mesh.vertices.push_back({element_x, element_y + element_height});
-                //         mesh.vertices.push_back({element_x + element_width, element_y + element_height});
-                //         mesh.indices.push_back(current_index + 0);
-                //         mesh.indices.push_back(current_index + 1);
-                //         mesh.indices.push_back(current_index + 2);
-                //         mesh.indices.push_back(current_index + 2);
-                //         mesh.indices.push_back(current_index + 1);
-                //         mesh.indices.push_back(current_index + 3);
-                //         current_index +=4;
-                //         
-                //         for(u8 char_i = 0;elements[id].name[char_i] != '\0'; ++char_i){
-                //                 //TODO: lookup texture coords for the char in the element.
-                //                 f32 glyph_x = element_x + grid_col_size;
-                //                 f32 glyph_y = element_y;
-                //                 mesh.vertices.push_back({glyph_x, glyph_y});
-                //                 mesh.vertices.push_back({glyph_x + grid_col_size, glyph_y});
-                //                 mesh.vertices.push_back({glyph_x, glyph_y + grid_row_size});
-                //                 mesh.vertices.push_back({glyph_x + grid_col_size, glyph_y + grid_row_size});
-                //                 mesh.indices.push_back(current_index + 0);
-                //                 mesh.indices.push_back(current_index + 1);
-                //                 mesh.indices.push_back(current_index + 2);
-                //                 mesh.indices.push_back(current_index + 2);
-                //                 mesh.indices.push_back(current_index + 1);
-                //                 mesh.indices.push_back(current_index + 3);
-                //                 current_index +=4;
-                //         }
-                // }
+                mesh.add_rect({.x = -.9, .y= -.9, .w=2, .h = 2, .color = {0,1,0,1}}, 0);
+                mesh.add_rect({.w =  2 * (2.0/5), .h = 2, .color = {1, 0, 1, 1}}, 4);
 
                 //Reset.
                 std::fill(elements_to_render, elements_to_render + max_element_count, -1);

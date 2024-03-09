@@ -127,12 +127,8 @@ int main() noexcept {
                 if(ui.button(&something_button_id, "Something")){
                         //TODO: do button stuff.
                 }
-                auto gui_data = ui.finish_and_render();
-                auto gui_vertices = std::vector<glm::vec3>(gui_data.positions.size());
-                for(auto i = 0; i < gui_vertices.size(); ++i) gui_vertices[i] = glm::vec3(gui_data.positions[i], 0);
-                renderer.load_ui_data(gui_data.indices.size(), gui_data.indices.data(), gui_data.positions.size(), gui_vertices.data(), gui_data.texuvs.data(), gui_data.colors.data());
-                // renderer.ui_mesh = renderer.load_static_mesh32(gui_vertices.data(), gui_vertices.size(), gui_data.indices.data(), gui_data.indices.size(), gui_data.texuvs.data());
-
+                auto gui_data = ui.finish_and_draw();
+                renderer.load_ui_data(gui_data.indices.size(), gui_data.indices.data(), gui_data.positions.size(), gui_data.positions.data(), gui_data.texuvs.data(), gui_data.colors.data());
                 // render_state.ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
                 // render_state.ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f,0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
                 // render_state.ubo.projection = glm::perspective(glm::radians(45.0f), render_state.swapchain_extent.width / (float) render_state.swapchain_extent.height, 0.1f, 10.0f);

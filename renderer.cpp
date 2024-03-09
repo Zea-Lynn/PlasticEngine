@@ -1139,7 +1139,7 @@ struct Render_State {
                 auto const ui_vertex_binding_dexcriptions = std::array{
                         VkVertexInputBindingDescription{
                                 .binding = 0,
-                                .stride = sizeof(Pos),
+                                .stride = sizeof(glm::vec2),
                                 .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
                         },
                         VkVertexInputBindingDescription{
@@ -1157,7 +1157,7 @@ struct Render_State {
                         VkVertexInputAttributeDescription{
                                 .location = 0,
                                 .binding = vertex_position_binding_description.binding,
-                                .format = VK_FORMAT_R32G32B32_SFLOAT,
+                                .format = VK_FORMAT_R32G32_SFLOAT,
                                 .offset = 0,
                         },
                         VkVertexInputAttributeDescription{
@@ -1537,7 +1537,7 @@ struct Render_State {
                 ui.max_indices = max_indices;
                 ui.max_vertices = max_vertices;
                 ui.indices = create_exclusive_vertex_buffer(max_indices * sizeof(u32));
-                ui.positions = create_exclusive_vertex_buffer(max_vertices * sizeof(Pos));
+                ui.positions = create_exclusive_vertex_buffer(max_vertices * sizeof(glm::vec2));
                 ui.texuvs = create_exclusive_vertex_buffer(max_vertices * sizeof(Texuv));
                 ui.colors = create_exclusive_vertex_buffer(max_vertices * sizeof(Color));
                 VkBuffer buffers[] = {ui.indices, ui.positions, ui.texuvs, ui.colors};
@@ -1546,7 +1546,7 @@ struct Render_State {
                 auto const allignment = vertex_index_test_buffer_memory_requirements.alignment;
                 //TODO: this allocaiton + allignment stuff is certantly wrong but I can't be damned to fix it right now.
                 auto const postion_offset = calculate_buffer_offset(max_indices * sizeof(u32), allignment);
-                auto const texuvs_offset = calculate_buffer_offset(postion_offset + (max_vertices * sizeof(Pos)), allignment);
+                auto const texuvs_offset = calculate_buffer_offset(postion_offset + (max_vertices * sizeof(glm::vec2)), allignment);
                 auto const color_offset = calculate_buffer_offset(texuvs_offset + (max_vertices * sizeof(Texuv)), allignment);
                 device_functions.vkBindBufferMemory(device, ui.indices, ui.memory, 0);
                 device_functions.vkBindBufferMemory(device, ui.positions, ui.memory, postion_offset);
@@ -1569,7 +1569,7 @@ struct Render_State {
                 if(memory) device_functions.vkFreeMemory(device, memory,vulkan_allocator);
         }
 
-        auto load_ui_data( u32 index_count, u32 * indices, u32 vertex_count, Pos * positions, Texuv * texuvs, Color * colors){
+        auto load_ui_data( u32 index_count, u32 * indices, u32 vertex_count, glm::vec2 * positions, Texuv * texuvs, Color * colors){
                 if(index_count > ui.max_indices){
                         puts(std::format("index count too high for ui data. max indices:{}, index count:{}", ui.max_indices, index_count).c_str());
                         return;
@@ -1583,7 +1583,7 @@ struct Render_State {
                 ui.index_count = index_count;
                 ui.vertex_count = vertex_count;
                 copy_data_to_device_buffer<u32>(index_count, indices, ui.indices);
-                copy_data_to_device_buffer<Pos>(vertex_count, positions, ui.positions);
+                copy_data_to_device_buffer<glm::vec2>(vertex_count, positions, ui.positions);
                 copy_data_to_device_buffer<Texuv>(vertex_count, texuvs, ui.texuvs);
                 if(colors) copy_data_to_device_buffer<Color>(vertex_count, colors, ui.colors);
         }
