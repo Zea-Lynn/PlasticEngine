@@ -31,11 +31,6 @@ add_subdirectory("Vulkan-Utility-Libraries")
 add_executable(plastic)
 target_link_options(plastic PRIVATE -fuse-ld=mold)
 target_precompile_headers(plastic PUBLIC includes.h)
-# TODO: modules when they work.
-# set(CMAKE_CXX_STANDARD_REQUIRED ON)
-# set(CMAKE_CXX_EXTENSIONS OFF)
-# set(CMAKE_CXX_SCAN_FOR_MODULES ON)
-# target_sources(plastic PRIVATE FILE_SET modules TYPE CXX_MODULES FILES renderer.cpp)
 target_sources(plastic PRIVATE main.cpp)
 
 target_link_libraries(plastic PRIVATE Vulkan::Headers glfw glm::glm-header-only Vulkan::UtilityHeaders)

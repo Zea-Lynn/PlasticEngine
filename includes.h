@@ -26,5 +26,10 @@ using vec4 = glm::vec4;
 using vec3 = glm::vec3;
 using vec2 = glm::vec2;
 
+using Pos = vec3;
+using Texuv = vec2;
+using Color = vec4;
+using Normal = vec3;
+
 #define STB_IMAGE_IMPLEMENTATION
 #include "./stb/stb_image.h"

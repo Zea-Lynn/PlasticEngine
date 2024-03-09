@@ -87,14 +87,6 @@ struct Ubo {
         glm::mat4 model;
 };
 
-struct Triangle_Mesh2{
-        u64 index_count;
-        u64 max_vertices;
-        u64 max_indices;
-        VkDeviceMemory memory;
-        VkBuffer buffer;
-};
-
 struct Triangle_Mesh {
         u64 vertex_count;
         VkBuffer vertex_buffer;
@@ -107,6 +99,8 @@ struct Triangle_Mesh {
         VkBuffer texture_uv_buffer;
         VkDeviceMemory texture_uv_buffer_memory;
 };
+
+
 
 struct Texture{
         VkImage image = VK_NULL_HANDLE;
@@ -165,6 +159,8 @@ struct Render_State {
         VkFence *image_in_flieght_fences;
         VkImage *depth_images;
 
+        VkMemoryRequirements vertex_index_test_buffer_memory_requirements;
+
         VkDeviceMemory *depth_images_memory;
         VkImageView *depth_images_views;
         VkSampler sampler;
@@ -172,7 +168,6 @@ struct Render_State {
         s64 current_frame = 0;
         Ubo player_ubo;
         Ubo terrain_ubo;
-        Ubo gui_ubo;
 
         u32 vertex_count;
         VkBuffer vertex_buffer;
@@ -191,7 +186,6 @@ struct Render_State {
 
         Triangle_Mesh terrain_mesh;
         Triangle_Mesh player_mesh;
-        Triangle_Mesh ui_mesh;
 
         u32 opaque_mesh_count;
         VkBuffer player_ubo_buffer;
@@ -203,11 +197,28 @@ struct Render_State {
         void *terrain_ubo_mapped_memory;
         VkDescriptorSet terrain_descriptor_set;
         VkBuffer ui_ubo_buffer;
-        VkDeviceMemory ui_ubo_memory;
-        void *ui_ubo_mapped_memory;
-        VkDescriptorSet ui_descriptor_set;
 
         VkDescriptorSet texture_sampler_descriptor_set;
+
+        struct UI{
+                VkDescriptorSetLayout descriptor_set_layout = VK_NULL_HANDLE;
+                VkDescriptorSet descriptor_set = VK_NULL_HANDLE;
+                VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
+                VkPipeline pipeline = VK_NULL_HANDLE;
+                Texture texture;
+
+                VkDeviceSize max_indices = 0;
+                VkDeviceSize max_vertices = 0;
+                VkDeviceSize index_count = 0;
+                VkDeviceSize vertex_count = 0;
+                VkBuffer indices = VK_NULL_HANDLE;
+                VkBuffer positions = VK_NULL_HANDLE;
+                VkBuffer texuvs = VK_NULL_HANDLE;
+                VkBuffer colors = VK_NULL_HANDLE;
+
+                VkDeviceMemory memory = VK_NULL_HANDLE;
+                //TODO:
+        }ui;
 
         template <typename T> inline T load_instance_function(char const *name) const noexcept { 
                 return reinterpret_cast<T>(vkGetInstanceProcAddr(instance, name)); 
@@ -327,10 +338,35 @@ struct Render_State {
         };
 
         static inline auto settup_descriptors(Render_State *state) noexcept{
-                auto const ubo_buffer_size = sizeof(Ubo);
+                auto const ui_pool_size = VkDescriptorPoolSize{.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount = 1};
+                auto const ui_pool_info = VkDescriptorPoolCreateInfo{
+                        .sType = vku::GetSType<VkDescriptorPoolCreateInfo>(),
+                        .maxSets = 1,
+                        .poolSizeCount = 1,
+                        .pPoolSizes = &ui_pool_size,
+                };
+                VkDescriptorPool ui_pool;
+                if (auto const result = state->device_functions.vkCreateDescriptorPool(state->device, &ui_pool_info, state->vulkan_allocator, &ui_pool); result not_eq VK_SUCCESS) {
+                        puts(std::format("unable to create descriptor pool ui {}", string_VkResult(result)).c_str());
+                        exit(420);
+                }
+                auto const pool_set_allocate_info = VkDescriptorSetAllocateInfo{
+                        .sType = vku::GetSType<VkDescriptorSetAllocateInfo>(),
+                        .descriptorPool = ui_pool,
+                        .descriptorSetCount = 1,
+                        .pSetLayouts = &state->ui.descriptor_set_layout,
+                };
+                if (auto const result = state->device_functions.vkAllocateDescriptorSets(state->device, &pool_set_allocate_info, &state->ui.descriptor_set); result not_eq VK_SUCCESS) {
+                        puts("unable to allocate ui descriptor set");
+                        exit(420);
+                }
+                
 
+
+
+                auto const ubo_buffer_size = sizeof(Ubo);
                 // auto const terrain_uniform_descriptor_pool_size = ;
-                constexpr u8 model_count = 3;
+                constexpr u8 model_count = 2;
                 //TODO: make these descriptors for the ubo a push constant, and decombine the image and sampler.
                 auto const descriptors_pool_sizes = std::array{
                         VkDescriptorPoolSize{.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, .descriptorCount = model_count },
@@ -359,7 +395,6 @@ struct Render_State {
                 VkDescriptorSet * descriptor_sets[] = {
                         &state->player_descriptor_set,
                         &state->terrain_descriptor_set,
-                        &state->ui_descriptor_set,
                 };
 
                 for(auto i = 0; i < model_count;++i){
@@ -378,13 +413,11 @@ struct Render_State {
                 VkDeviceMemory * ubo_buffer_memory[] = {
                         &state->player_ubo_memory,
                         &state->terrain_ubo_memory,
-                        &state->ui_ubo_memory,
                 };
 
                 void ** ubo_mapped_buffer_memory[] = {
                         &state->player_ubo_mapped_memory,
                         &state->terrain_ubo_mapped_memory,
-                        &state->ui_ubo_mapped_memory,
                 };
 
                 for(auto i = 0; i < model_count;++i){
@@ -413,6 +446,22 @@ struct Render_State {
                         };
                         state->device_functions.vkUpdateDescriptorSets(state->device, 1, &write, 0, nullptr);
                 }
+        }
+
+        inline auto create_shader_module(size_t size, u32 const * data) noexcept{
+                auto info = VkShaderModuleCreateInfo{
+                        .sType = vku::GetSType<VkShaderModuleCreateInfo>(),
+                        .pNext = nullptr,
+                        .flags = {},
+                        .codeSize = size,
+                        .pCode = data,
+                };
+                VkShaderModule module;
+                if (device_functions.vkCreateShaderModule(device, &info, vulkan_allocator, &module)) {
+                        std::puts("unable to create shader module");
+                        std::exit(420);
+                }
+                return module;
         }
 
         static inline auto initalize(Render_State *state, GLFWwindow *window) noexcept {
@@ -806,7 +855,7 @@ struct Render_State {
 
                 auto const vertex_position_binding_description = VkVertexInputBindingDescription{
                         .binding = 0,
-                        .stride = sizeof(glm::vec3),
+                        .stride = sizeof(Pos),
                         .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
                 };
                 auto const vertex_position_attribute = VkVertexInputAttributeDescription{
@@ -816,25 +865,40 @@ struct Render_State {
                         .offset = 0,
                 };
 
-                auto const vertex_texture_uv_binding_description = VkVertexInputBindingDescription{
+                auto const vertex_texuv_binding_description = VkVertexInputBindingDescription{
                         .binding = 1,
-                        .stride = sizeof(glm::vec2),
+                        .stride = sizeof(Texuv),
                         .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
                 };
                 auto const texture_uv_attribute = VkVertexInputAttributeDescription{
                         .location = 1,
-                        .binding = vertex_texture_uv_binding_description.binding,
+                        .binding = vertex_texuv_binding_description.binding,
                         .format = VK_FORMAT_R32G32_SFLOAT,
+                        .offset = 0,
+                };
+
+                auto const vertex_color_binding_description = VkVertexInputBindingDescription{
+                        .binding = 2,
+                        .stride = sizeof(Color),
+                        .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+                };
+
+                auto const vertex_color_attribute = VkVertexInputAttributeDescription{
+                        .location = 2,
+                        .binding = vertex_color_binding_description.binding,
+                        .format = VK_FORMAT_R32G32B32A32_SFLOAT,
                         .offset = 0,
                 };
 
                 auto const vertex_binding_dexcriptions = std::array{
                         vertex_position_binding_description,
-                        vertex_texture_uv_binding_description
+                        vertex_texuv_binding_description,
+                        // vertex_color_binding_description,
                 };
                 auto const vertex_attribute_descritions = std::array{
                         vertex_position_attribute,
                         texture_uv_attribute,
+                        // vertex_color_attribute,
                 };
 
                 auto const vertex_input_info = VkPipelineVertexInputStateCreateInfo{
@@ -1053,11 +1117,133 @@ struct Render_State {
                         .renderPass = state->render_pass,
                 };
 
-                std::puts("making graphics pipeline");
-                if (device_functions.vkCreateGraphicsPipelines(state->device, nullptr, 1, &pipeline_create_info, state->vulkan_allocator, &state->graphics_pipeline) not_eq VK_SUCCESS) {
+                #include "ui_shaders.h"
+                auto const ui_shader_stages = std::array{
+                        VkPipelineShaderStageCreateInfo{
+                                .sType = vku::GetSType<VkPipelineShaderStageCreateInfo>(),
+                                .pNext = nullptr,
+                                .flags = {},
+                                .stage = VK_SHADER_STAGE_VERTEX_BIT,
+                                .module = state->create_shader_module(ui_vert_spv_len, reinterpret_cast<u32 const *>(ui_vert_spv)),
+                                .pName = "main",
+                        },
+                        VkPipelineShaderStageCreateInfo{
+                                .sType = vku::GetSType<VkPipelineShaderStageCreateInfo>(),
+                                .pNext = nullptr,
+                                .flags = {},
+                                .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+                                .module =  state->create_shader_module(ui_frag_spv_len, reinterpret_cast<u32 const *>(ui_frag_spv)),
+                                .pName = "main",
+                        },
+                };
+                auto const ui_vertex_binding_dexcriptions = std::array{
+                        VkVertexInputBindingDescription{
+                                .binding = 0,
+                                .stride = sizeof(Pos),
+                                .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+                        },
+                        VkVertexInputBindingDescription{
+                                .binding = 1,
+                                .stride = sizeof(Texuv),
+                                .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+                        },
+                                VkVertexInputBindingDescription{
+                                .binding = 2,
+                                .stride = sizeof(Color),
+                                .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+                        },
+                };
+                auto const ui_vertex_attribute_descritions = std::array{
+                        VkVertexInputAttributeDescription{
+                                .location = 0,
+                                .binding = vertex_position_binding_description.binding,
+                                .format = VK_FORMAT_R32G32B32_SFLOAT,
+                                .offset = 0,
+                        },
+                        VkVertexInputAttributeDescription{
+                                .location = 1,
+                                .binding = vertex_texuv_binding_description.binding,
+                                .format = VK_FORMAT_R32G32_SFLOAT,
+                                .offset = 0,
+                        },
+                        VkVertexInputAttributeDescription{
+                                .location = 2,
+                                .binding = vertex_color_binding_description.binding,
+                                .format = VK_FORMAT_R32G32B32A32_SFLOAT,
+                                .offset = 0,
+                        },
+                };
+
+                auto const ui_vertex_input_info = VkPipelineVertexInputStateCreateInfo{
+                        .sType = vku::GetSType<VkPipelineVertexInputStateCreateInfo>(),
+                        .pNext = nullptr,
+                        .flags = {},
+                        .vertexBindingDescriptionCount = ui_vertex_binding_dexcriptions.size(),
+                        .pVertexBindingDescriptions = ui_vertex_binding_dexcriptions.data(),
+                        .vertexAttributeDescriptionCount = ui_vertex_attribute_descritions.size(),
+                        .pVertexAttributeDescriptions = ui_vertex_attribute_descritions.data(),
+                };
+
+                auto const ui_sampler_binding = VkDescriptorSetLayoutBinding{
+                        .binding = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                        .descriptorCount = 1,
+                        .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT,
+                        .pImmutableSamplers = &state->sampler,
+                };
+                auto const ui_descriptor_set_info = VkDescriptorSetLayoutCreateInfo{
+                        .sType = vku::GetSType<VkDescriptorSetLayoutCreateInfo>(),
+                        .pNext = nullptr,
+                        .flags = {},
+                        .bindingCount = 1,
+                        .pBindings = &ui_sampler_binding,
+                };
+                if (device_functions.vkCreateDescriptorSetLayout(state->device, &ui_descriptor_set_info, state->vulkan_allocator, &state->ui.descriptor_set_layout) not_eq VK_SUCCESS) {
+                        std::puts("unable to create descriptor set layout");
+                        std::exit(1);
+                }
+                auto const ui_pipeline_layout_info = VkPipelineLayoutCreateInfo{
+                        .sType = vku::GetSType<VkPipelineLayoutCreateInfo>(),
+                        .pNext = nullptr,
+                        .flags = {},
+                        .setLayoutCount = 1,
+                        .pSetLayouts = &state->ui.descriptor_set_layout,
+                        .pushConstantRangeCount = 0,
+                        .pPushConstantRanges = nullptr,
+                };
+                if (device_functions.vkCreatePipelineLayout(state->device, &ui_pipeline_layout_info, state->vulkan_allocator, &state->ui.pipeline_layout) not_eq VK_SUCCESS) {
+                        std::puts("unable to create pipeline layout");
+                        std::exit(1);
+                }
+
+                auto const ui_pipeline_create_info = VkGraphicsPipelineCreateInfo{
+                        .sType = vku::GetSType<VkGraphicsPipelineCreateInfo>(),
+                        .pNext = nullptr,
+                        .flags = {},
+                        .stageCount = ui_shader_stages.size(),
+                        .pStages = ui_shader_stages.data(),
+                        .pVertexInputState = &ui_vertex_input_info,
+                        .pInputAssemblyState = &input_assembly_info,
+                        .pViewportState = &viewport_state_info,
+                        .pRasterizationState = &rasterizer,
+                        .pMultisampleState = &multisampling,
+                        .pDepthStencilState = &depth_stencil,
+                        .pColorBlendState = &color_blending,
+                        .pDynamicState = &dynamic_state,
+                        .layout = state->ui.pipeline_layout,
+                        .renderPass = state->render_pass,
+                };
+
+                VkGraphicsPipelineCreateInfo pipeline_infos[] = {pipeline_create_info, ui_pipeline_create_info};
+                VkPipeline pipelines[2];
+                std::puts("making graphics pipelines");
+                if (device_functions.vkCreateGraphicsPipelines(state->device, nullptr, 2, pipeline_infos, state->vulkan_allocator, pipelines) not_eq VK_SUCCESS) {
                         std::puts("unable to create graphics pipelines.");
                         std::exit(89888);
                 }
+
+                state->graphics_pipeline = pipelines[0];
+                state->ui.pipeline = pipelines[1];
 
                 VkPhysicalDeviceMemoryProperties physical_device_memory_properties;
                 state->instance_functions.vkGetPhysicalDeviceMemoryProperties(state->physical_device, &physical_device_memory_properties);
@@ -1214,6 +1400,19 @@ struct Render_State {
                 std::puts(std::format(" present index = {}", present_index).c_str());
                 device_functions.vkGetDeviceQueue(state->device, present_index, 0, &state->present_queue);
                 state->device_functions.vkDeviceWaitIdle(state->device);
+
+
+                //Figure out memory requirements for an vertex and index buffer for the rest of the program.
+                auto const test_buffer_create_info = VkBufferCreateInfo{
+                        .sType = vku::GetSType<VkBufferCreateInfo>(),
+                        .size = 0,
+                        .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+                };
+                VkBuffer test_buffer;
+                puts("Ignore validation error");
+                device_functions.vkCreateBuffer(state->device, &test_buffer_create_info, state->vulkan_allocator, &test_buffer);
+                device_functions.vkGetBufferMemoryRequirements(state->device, test_buffer, &state->vertex_index_test_buffer_memory_requirements);
         }
 
         inline auto buffer_copy(VkBuffer src_buffer, VkBuffer dst_buffer, VkDeviceSize size)const noexcept {
@@ -1245,7 +1444,8 @@ struct Render_State {
                 };
 
                 device_functions.vkQueueSubmit(graphics_queue, 1, &submit_info, nullptr);
-                device_functions.vkDeviceWaitIdle(device);
+                device_functions.vkQueueWaitIdle(graphics_queue);
+                device_functions.vkFreeCommandBuffers(device, command_pool, 1, &copy_command_buffer);
         };
 
 
@@ -1271,22 +1471,22 @@ struct Render_State {
                 create_buffer(VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, buffer_size, &buffer, &buffer_memory);
                 buffer_copy(staging_buffer, buffer, buffer_size);
 
-                if(staging_buffer) device_functions.vkDestroyBuffer(device, staging_buffer, vulkan_allocator);
-                if(staging_memory) device_functions.vkFreeMemory(device, staging_memory, vulkan_allocator);
+                // if(staging_buffer) device_functions.vkDestroyBuffer(device, staging_buffer, vulkan_allocator);
+                // if(staging_memory) device_functions.vkFreeMemory(device, staging_memory, vulkan_allocator);
 
                 return Buffer_Handle_and_Memory{buffer_memory, buffer};
         };
 
         constexpr auto load_static_mesh32( glm::vec3 const * vertices, u32 vertex_count, u32 const * indices, u32 index_count, glm::vec2 const * texuvs) noexcept{
                 /* TODO: just put these all into one buffer and store the offsets of each thing so we aren't allocated tones of buffers when we have more things. */
-                auto [vertex_memory, vertex_buffer] = stage_and_copy_buffer(vertices, vertex_count, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-                auto [texuv_memory, texuv_buffer] = stage_and_copy_buffer(texuvs, vertex_count, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-                auto [texcol_memory, texcol_buffer] = stage_and_copy_buffer(texuvs, vertex_count, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
-                auto [index_memory, index_buffer] = stage_and_copy_buffer(indices, index_count, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+                auto [position_memory, position_buffer] = stage_and_copy_buffer(vertices, vertex_count, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+                auto [texuv_memory, texuv_buffer] = stage_and_copy_buffer(texuvs, vertex_count, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+                auto [texcol_memory, texcol_buffer] = stage_and_copy_buffer(texuvs, vertex_count, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+                auto [index_memory, index_buffer] = stage_and_copy_buffer(indices, index_count, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
                 return Triangle_Mesh{
                         .vertex_count = vertex_count,
-                        .vertex_buffer = vertex_buffer,
-                        .vertex_buffer_memory = vertex_memory,
+                        .vertex_buffer = position_buffer,
+                        .vertex_buffer_memory = position_memory,
                         .index_count = index_count,
                         .index_buffer = index_buffer,
                         .index_buffer_memory = index_memory,
@@ -1295,34 +1495,263 @@ struct Render_State {
                 };
         }
 
-        constexpr auto add_mesh32(u32 max_vertices, u32 max_indices) noexcept{
-                auto mesh = Triangle_Mesh2{.max_vertices = max_vertices, .max_indices = max_indices};
-                constexpr size_t sizes[] = {sizeof(glm::vec3), sizeof(glm::vec2), sizeof(glm::vec4), sizeof(glm::vec3)};
-                VkDeviceSize buffer_size = max_indices * sizeof(u32);
-                for(auto size : sizes) buffer_size +=(size * max_vertices);
-
-                auto const buffer_create_info = VkBufferCreateInfo{
+        inline auto create_exclusive_vertex_buffer(VkDeviceSize size){
+                auto const info = VkBufferCreateInfo{
                         .sType = vku::GetSType<VkBufferCreateInfo>(),
-                        .size = buffer_size,
+                        .size = size,
                         .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
                         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
                 };
-                device_functions.vkCreateBuffer(device, &buffer_create_info, vulkan_allocator, &mesh.buffer);
-
-                VkMemoryRequirements buffer_memory_requirements;
-                device_functions.vkGetBufferMemoryRequirements(device, mesh.buffer, &buffer_memory_requirements);
-
-                auto const buffer_memory_alloc_info = VkMemoryAllocateInfo{
-                        .sType = vku::GetSType<VkMemoryAllocateInfo>(),
-                        .allocationSize = buffer_memory_requirements.size,
-                        .memoryTypeIndex = find_memory_type(buffer_memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT),
-                };
-                device_functions.vkAllocateMemory(device, &buffer_memory_alloc_info, vulkan_allocator, &mesh.memory);
-                device_functions.vkBindBufferMemory(device, mesh.buffer, mesh.memory, 0);
+                VkBuffer buffer;
+                if(auto result = device_functions.vkCreateBuffer(device, &info, vulkan_allocator, &buffer); result not_eq VK_SUCCESS){
+                        puts(std::format("could not create exclusive vertex buffer {}", string_VkResult(result)).c_str());
+                }
+                return buffer;
         }
 
-        constexpr auto load_mesh_data32(u32 mesh_index, u32 index_count, u32 * indices, u32 vertex_count, vec3 * positions, vec2 * texuvs, vec4 * colors, vec3 * normals) noexcept{
+        inline auto create_device_local_buffers_memory_alloc_info(VkDeviceSize buffer_count, VkBuffer * buffers){
+                VkMemoryRequirements buffer_memory_requirements[buffer_count];
+                for(auto i = 0; i < buffer_count; ++i){
+                        device_functions.vkGetBufferMemoryRequirements(device, buffers[i], &buffer_memory_requirements[i]);
+                }
+                //TODO: make sure all the memry type bits and allignment and other stuff is the same.
+                u32 memory_type_bits = 0;
+                VkDeviceSize allocation_size = 0;
+                for(auto i = 0; i < buffer_count; ++i){
+                        allocation_size += buffer_memory_requirements[i].size;
+                        memory_type_bits |= buffer_memory_requirements[i].memoryTypeBits;
+                }
+                return VkMemoryAllocateInfo{
+                        .sType = vku::GetSType<VkMemoryAllocateInfo>(),
+                        .allocationSize = allocation_size,
+                        .memoryTypeIndex = find_memory_type(memory_type_bits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT),
+                };
+        }
 
+        constexpr auto calculate_buffer_offset(VkDeviceSize preceding_array_size, VkDeviceSize allignment) noexcept -> VkDeviceSize{
+                auto const remainder = (preceding_array_size % allignment);
+                return preceding_array_size + ((remainder > 0) * (allignment - remainder)); 
+        }
+
+        auto allocate_ui(u32 max_vertices = 0, u32 max_indices = 0) noexcept{
+                ui.max_indices = max_indices;
+                ui.max_vertices = max_vertices;
+                ui.indices = create_exclusive_vertex_buffer(max_indices * sizeof(u32));
+                ui.positions = create_exclusive_vertex_buffer(max_vertices * sizeof(Pos));
+                ui.texuvs = create_exclusive_vertex_buffer(max_vertices * sizeof(Texuv));
+                ui.colors = create_exclusive_vertex_buffer(max_vertices * sizeof(Color));
+                VkBuffer buffers[] = {ui.indices, ui.positions, ui.texuvs, ui.colors};
+                auto const buffer_memory_alloc_info = create_device_local_buffers_memory_alloc_info(4, buffers);
+                device_functions.vkAllocateMemory(device, &buffer_memory_alloc_info, vulkan_allocator, &ui.memory);
+                auto const allignment = vertex_index_test_buffer_memory_requirements.alignment;
+                //TODO: this allocaiton + allignment stuff is certantly wrong but I can't be damned to fix it right now.
+                auto const postion_offset = calculate_buffer_offset(max_indices * sizeof(u32), allignment);
+                auto const texuvs_offset = calculate_buffer_offset(postion_offset + (max_vertices * sizeof(Pos)), allignment);
+                auto const color_offset = calculate_buffer_offset(texuvs_offset + (max_vertices * sizeof(Texuv)), allignment);
+                device_functions.vkBindBufferMemory(device, ui.indices, ui.memory, 0);
+                device_functions.vkBindBufferMemory(device, ui.positions, ui.memory, postion_offset);
+                device_functions.vkBindBufferMemory(device, ui.texuvs, ui.memory, texuvs_offset);
+                device_functions.vkBindBufferMemory(device, ui.colors, ui.memory, color_offset);
+        }
+
+        template<typename T>
+        inline auto copy_data_to_device_buffer(VkDeviceSize size, T * data, VkBuffer device_buffer)noexcept{
+                VkBuffer buffer;
+                VkDeviceMemory memory;
+                auto const buffer_size = size * sizeof(T);
+                create_buffer(VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, buffer_size, &buffer, &memory);
+                void *buffer_data_staging_memory;
+                device_functions.vkMapMemory(device, memory, 0, buffer_size, 0, &buffer_data_staging_memory);
+                std::memcpy(buffer_data_staging_memory, data, buffer_size);
+                device_functions.vkUnmapMemory(device, memory);
+                buffer_copy(buffer, device_buffer, buffer_size);
+                if(buffer)device_functions.vkDestroyBuffer(device, buffer, vulkan_allocator);
+                if(memory) device_functions.vkFreeMemory(device, memory,vulkan_allocator);
+        }
+
+        auto load_ui_data( u32 index_count, u32 * indices, u32 vertex_count, Pos * positions, Texuv * texuvs, Color * colors){
+                if(index_count > ui.max_indices){
+                        puts(std::format("index count too high for ui data. max indices:{}, index count:{}", ui.max_indices, index_count).c_str());
+                        return;
+                }
+
+                if(vertex_count > ui.max_vertices){
+                        puts(std::format("vertex count too high for ui data. max vertices:{}, vertex count:{}", ui.max_vertices, vertex_count).c_str());
+                        return;
+                }
+
+                ui.index_count = index_count;
+                ui.vertex_count = vertex_count;
+                copy_data_to_device_buffer<u32>(index_count, indices, ui.indices);
+                copy_data_to_device_buffer<Pos>(vertex_count, positions, ui.positions);
+                copy_data_to_device_buffer<Texuv>(vertex_count, texuvs, ui.texuvs);
+                if(colors) copy_data_to_device_buffer<Color>(vertex_count, colors, ui.colors);
+        }
+
+        inline void load_ui_texture(int width, int height, u8 * const data) noexcept{
+                VkDeviceSize image_size = width * height * 4;
+                VkBuffer staging_buffer;
+                VkDeviceMemory staging_memory;
+                create_buffer(VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, image_size, &staging_buffer, &staging_memory);
+                void * mapped_memory;
+                device_functions.vkMapMemory(device, staging_memory, 0, image_size, 0, &mapped_memory);
+                memcpy(mapped_memory, data, image_size);
+                device_functions.vkUnmapMemory(device, staging_memory);
+
+                auto const image_extent = VkExtent3D{static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1};
+
+                auto const image_create_info = VkImageCreateInfo{
+                        .sType = vku::GetSType<VkImageCreateInfo>(),
+                        .imageType = VK_IMAGE_TYPE_2D,
+                        .format = VK_FORMAT_R8G8B8A8_SRGB, 
+                        .extent = image_extent,
+                        .mipLevels = 1,
+                        .arrayLayers = 1,
+                        .samples = VK_SAMPLE_COUNT_1_BIT,
+                        .tiling = VK_IMAGE_TILING_OPTIMAL,
+                        .usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+                        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+                };
+
+                VkImage image;
+                if(auto result = device_functions.vkCreateImage(device, &image_create_info, vulkan_allocator, &image); result not_eq VK_SUCCESS){
+                        puts(std::format("Unable to create image:{}", string_VkResult(result)).c_str());
+                }
+
+                VkMemoryRequirements memory_requirements;
+                device_functions.vkGetImageMemoryRequirements(device, image, &memory_requirements); 
+                
+                auto const image_alloc_info = VkMemoryAllocateInfo{
+                        .sType = vku::GetSType<VkMemoryAllocateInfo>(),
+                        .allocationSize = memory_requirements.size,
+                        .memoryTypeIndex = find_memory_type(memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT),
+                };
+                VkDeviceMemory memory;
+                if(auto result = device_functions.vkAllocateMemory(device, &image_alloc_info, vulkan_allocator, &memory); result not_eq VK_SUCCESS){
+                        puts(std::format("Unable to allocate memory for image:{}", string_VkResult(result)).c_str());
+                        exit(420);
+                }
+
+                if(auto result = device_functions.vkBindImageMemory(device, image, memory, 0); result not_eq VK_SUCCESS){
+                        puts(std::format("Unable to bind memory for image:{}", string_VkResult(result)).c_str());
+                        exit(420);
+                }
+
+                auto const command_buffer_allocate_info = VkCommandBufferAllocateInfo{
+                        .sType = vku::GetSType<VkCommandBufferAllocateInfo>(),
+                        .commandPool = command_pool,
+                        .level = VkCommandBufferLevel::VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+                        .commandBufferCount = 1,
+                };
+                VkCommandBuffer copy_command_buffer;
+                if (device_functions.vkAllocateCommandBuffers(device, &command_buffer_allocate_info, &copy_command_buffer) not_eq VK_SUCCESS) {
+                        std::puts("unable to allocate command buffers to load texture");
+                }
+
+                auto const begin_info = VkCommandBufferBeginInfo{.sType = vku::GetSType<VkCommandBufferBeginInfo>()};
+
+                device_functions.vkBeginCommandBuffer(copy_command_buffer, &begin_info);
+                auto const region = VkBufferImageCopy{
+                        .bufferRowLength = 0,
+                        .bufferImageHeight = 0,
+                        .imageSubresource = {
+                                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                                .mipLevel = 0,
+                                .baseArrayLayer = 0,
+                                .layerCount = 1,
+                        },
+                        .imageOffset = {0,0,0},
+                        .imageExtent = image_extent,
+                };
+
+                auto const barrier = VkImageMemoryBarrier{
+                        .sType = vku::GetSType<VkImageMemoryBarrier>(),
+                        .srcAccessMask = 0,
+                        .dstAccessMask = 0,
+                        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+                        .newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                        .image = image,
+                        .subresourceRange = {
+                                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                                .baseMipLevel = 0,
+                                .levelCount = 1,
+                                .baseArrayLayer = 0,
+                                .layerCount = 1,
+                        },
+                };
+                device_functions.vkCmdPipelineBarrier(copy_command_buffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,0, nullptr, 0, nullptr, 1, &barrier);
+                device_functions.vkCmdCopyBufferToImage(copy_command_buffer, staging_buffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+                auto submit_info = VkSubmitInfo{
+                        .sType = vku::GetSType<VkSubmitInfo>(),
+                        .commandBufferCount = 1,
+                        .pCommandBuffers = &copy_command_buffer,
+                };
+
+                auto const image_to_sampled_barrier = VkImageMemoryBarrier{
+                        .sType = vku::GetSType<VkImageMemoryBarrier>(),
+                        .srcAccessMask = 0,
+                        .dstAccessMask = 0,
+                        .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                        .newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                        .image = image,
+                        .subresourceRange = {
+                                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                                .baseMipLevel = 0,
+                                .levelCount = 1,
+                                .baseArrayLayer = 0,
+                                .layerCount = 1,
+                        },
+                };
+                device_functions.vkCmdPipelineBarrier(copy_command_buffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0,0, nullptr, 0, nullptr, 1, &image_to_sampled_barrier);
+                device_functions.vkEndCommandBuffer(copy_command_buffer);
+
+                device_functions.vkQueueSubmit(graphics_queue, 1, &submit_info, nullptr);
+                device_functions.vkQueueWaitIdle(graphics_queue);
+                device_functions.vkFreeCommandBuffers(device, command_pool, 1, &copy_command_buffer);
+
+                auto const view_create_info = VkImageViewCreateInfo{
+                        .sType = vku::GetSType<VkImageViewCreateInfo>(),
+                        .image = image,
+                        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+                        .format = image_create_info.format,
+                        .subresourceRange = image_to_sampled_barrier.subresourceRange,
+                };
+
+                VkImageView view; 
+                if (auto result = device_functions.vkCreateImageView(device, &view_create_info, vulkan_allocator, &view);result not_eq VK_SUCCESS) {
+                        puts(std::format("Unable to create image views:{}", string_VkResult(result)).c_str());
+                }
+
+
+                auto const image_descriptor_info = VkDescriptorImageInfo{
+                        .sampler = sampler,
+                        .imageView = view,
+                        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                };
+
+                auto const write_sampler_descriptor = VkWriteDescriptorSet{
+                        .sType = vku::GetSType<VkWriteDescriptorSet>(),
+                        .dstSet = ui.descriptor_set,
+                        .dstBinding = 1,
+                        .dstArrayElement = 0,
+                        .descriptorCount = 1,
+                        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+                        .pImageInfo = &image_descriptor_info,
+                        .pBufferInfo = nullptr,
+                        .pTexelBufferView = nullptr,
+                };
+                device_functions.vkUpdateDescriptorSets(device, 1, &write_sampler_descriptor, 0, nullptr);
+
+                ui.texture = Texture{
+                        .image = image,
+                        .memory = memory,
+                        .view = view,
+                };
         }
 
         inline void load_terrain_texture(int width, int height, u8 * const data) noexcept{
@@ -1466,7 +1895,6 @@ struct Render_State {
                 VkDescriptorSet const descriptor_sets[] = {
                         terrain_descriptor_set,
                         player_descriptor_set,
-                        ui_descriptor_set,
                 };
 
                 auto const image_descriptor_info = VkDescriptorImageInfo{
@@ -1497,7 +1925,6 @@ struct Render_State {
                 };
         }
 
-        //TODO: this is leaking memory.
         inline void record_command_buffers(u32 swapchain_image_index) const noexcept {
                 VkClearValue const clear_values[] = { 
                         VkClearValue{.color = VkClearColorValue{.float32 = {1, 0, 1, 0}}},
@@ -1529,27 +1956,30 @@ struct Render_State {
 
                 device_functions.vkCmdSetViewport(command_buffer, 0, 1, &viewport);
                 device_functions.vkCmdSetScissor(command_buffer, 0, 1, &viewport_scissor);
+
+
+                VkDeviceSize offsets[3] = {0};
+
+                device_functions.vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, ui.pipeline);
+                VkBuffer const ui_mesh_buffers[] = {ui.positions, ui.texuvs, ui.colors};
+                device_functions.vkCmdBindVertexBuffers(command_buffer, 0, 3, ui_mesh_buffers, offsets);
+                device_functions.vkCmdBindIndexBuffer(command_buffer, ui.indices, 0, VkIndexType::VK_INDEX_TYPE_UINT32);
+                device_functions.vkCmdBindDescriptorSets(command_buffer, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, ui.pipeline_layout, 0, 1, &ui.descriptor_set, 0, nullptr);
+                device_functions.vkCmdDrawIndexed(command_buffer, ui.index_count, 1, 0, 0, 0);
+
                 device_functions.vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
-
-                VkDeviceSize offsets[2] = {0};
-
-                VkBuffer const player_mesh_buffers[] = {player_mesh.vertex_buffer, player_mesh.texture_uv_buffer };
+                VkBuffer const player_mesh_buffers[] = {player_mesh.vertex_buffer, player_mesh.texture_uv_buffer};
                 device_functions.vkCmdBindVertexBuffers(command_buffer, 0, 2, player_mesh_buffers, offsets);
                 device_functions.vkCmdBindIndexBuffer(command_buffer, player_mesh.index_buffer, 0, VkIndexType::VK_INDEX_TYPE_UINT32);
                 device_functions.vkCmdBindDescriptorSets(command_buffer, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &player_descriptor_set, 0, nullptr);
                 device_functions.vkCmdDrawIndexed(command_buffer, player_mesh.index_count, 1, 0, 0, 0);
 
-                VkBuffer const terrain_mesh_buffers[] = {terrain_mesh.vertex_buffer, terrain_mesh.texture_uv_buffer };
+
+                VkBuffer const terrain_mesh_buffers[] = {terrain_mesh.vertex_buffer, terrain_mesh.texture_uv_buffer};
                 device_functions.vkCmdBindVertexBuffers(command_buffer, 0, 2, terrain_mesh_buffers, offsets);
                 device_functions.vkCmdBindIndexBuffer(command_buffer, terrain_mesh.index_buffer, 0, VkIndexType::VK_INDEX_TYPE_UINT32);
                 device_functions.vkCmdBindDescriptorSets(command_buffer, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &terrain_descriptor_set, 0, nullptr);
                 device_functions.vkCmdDrawIndexed(command_buffer, terrain_mesh.index_count, 1, 0, 0, 0);
-
-                VkBuffer const ui_mesh_buffers[] = {ui_mesh.vertex_buffer, ui_mesh.texture_uv_buffer};
-                device_functions.vkCmdBindVertexBuffers(command_buffer, 0, 2, ui_mesh_buffers, offsets);
-                device_functions.vkCmdBindIndexBuffer(command_buffer, ui_mesh.index_buffer, 0, VkIndexType::VK_INDEX_TYPE_UINT32);
-                device_functions.vkCmdBindDescriptorSets(command_buffer, VkPipelineBindPoint::VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &ui_descriptor_set, 0, nullptr);
-                device_functions.vkCmdDrawIndexed(command_buffer, ui_mesh.index_count, 0, 0, 0, 0);
 
                 device_functions.vkCmdEndRenderPass(command_buffer);
                 device_functions.vkEndCommandBuffer(command_buffer);
@@ -1569,8 +1999,8 @@ struct Render_State {
                 }
 
                 uint32_t swapchain_image_index;
-                if (device_functions.vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, image_available_semaphore, image_in_flieght_fence, &swapchain_image_index) not_eq VK_SUCCESS) {
-                        std::puts("unable to aquire next swapchian image index.");
+                if (auto result = device_functions.vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, image_available_semaphore, image_in_flieght_fence, &swapchain_image_index); result not_eq VK_SUCCESS) {
+                        std::puts(std::format("problems aquireing next swapchian image index: {}", string_VkResult(result)).c_str());
                 }
 
                 record_command_buffers(swapchain_image_index);
@@ -1616,74 +2046,4 @@ struct Render_State {
                 current_frame = (current_frame + 1) % max_frames_in_flieght;
         };
 };
-
-
-
-
-
-
-// constexpr auto load_texture(Render_State * state, char const * path, u32 mip_levels) noexcept -> std::optional<Image>{
-//         int width, height, c;
-//         auto image_data = stbi_load(path, &width, &height, &c, STBI_rgb_alpha);
-//
-//         auto texture_format = std::optional<VkFormat>();
-//         for (auto format : {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT}) {
-//                 VkFormatProperties physical_device_format_properties;
-//                 state->instance_functions.vkGetPhysicalDeviceFormatProperties(state->physical_device, format, &physical_device_format_properties); 
-//                 if ((physical_device_format_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) > 0) {
-//                         texture_format = format;
-//                         break;
-//                 }
-//         }
-//
-//         if(not texture_format){
-//                 puts(std::format("unable to find a suitable format for texture {}", path).c_str());
-//         }
-//
-//         auto const image_info = VkImageCreateInfo{
-//                 .sType = vku::GetSType<VkImageCreateInfo>(),
-//                 .imageType = VK_IMAGE_TYPE_2D,
-//                 .format = texture_format.value(),
-//                 .extent = VkExtent3D{static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1},
-//                 .mipLevels = mip_levels,
-//                 .arrayLayers = 1,
-//                 .samples = VK_SAMPLE_COUNT_1_BIT,
-//                 .tiling = VK_IMAGE_TILING_OPTIMAL,
-//                 .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-//                 .queueFamilyIndexCount = 0,
-//                 .pQueueFamilyIndices = nullptr,
-//                 .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-//         };
-//
-//         VkImage image;
-//         if (vkCreateImage(state->device, &image_info, state->vulkan_allocator, &image) not_eq VK_SUCCESS) {
-//                 std::puts("unable to create vulkan image");
-//                 std::exit(420);
-//         }
-//         VkMemoryRequirements image_memory_requirements;
-//         vkGetImageMemoryRequirements(state->device, image, &image_memory_requirements);
-//
-//         VkMemoryAllocateInfo memory_allocate_info{
-//                 .sType = vku::GetSType<VkMemoryAllocateInfo>(),
-//                 .allocationSize = image_memory_requirements.size,
-//                 .memoryTypeIndex = find_memory_type(state,image_memory_requirements.memoryTypeBits, VkMemoryPropertyFlagBits::VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) 
-//         };
-//
-//         VkDeviceMemory image_memory;
-//         if (vkAllocateMemory(state->device, &memory_allocate_info, state->vulkan_allocator, &image_memory) not_eq VK_SUCCESS) {
-//                 puts("unable to allocate memory for an image");
-//                 exit(420);
-//         }
-//
-//         if (vkBindImageMemory(state->device, image, image_memory, 0) not_eq VK_SUCCESS) {
-//                 exit(420);
-//         }
-//         stbi_image_free(image_data);
-//         return Image{
-//                 .image = image,
-//                 .memory = image_memory,
-//                 .view = image_view
-//         };
-// }
-
 

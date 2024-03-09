@@ -24,6 +24,8 @@ struct UI {
         bool element_is_active;
         u32 screen_width, screen_height;
         u32 max_buffer_size;
+        //As fraction of sceenspace
+        f32 font_width = 0, font_height = 0;
 
         //TODO support more than halfwidth.
         struct Font_Atlas{
@@ -56,7 +58,7 @@ struct UI {
         s8 elements_to_render[max_element_count] = {-1};
 
         struct style{
-                glm::vec4 resting_color, hot_color, active_color;
+                Color resting_color, hot_color, active_color;
         } styles[max_element_count];
 
         //Also begins
@@ -73,8 +75,10 @@ struct UI {
                 return gui;
         }
 
-        inline constexpr auto begin(u32 screen_width, u32 screen_height, f32 mouse_x, f32 mouse_y, key current_key_pressed) noexcept{
+        inline constexpr auto begin(u32 screen_width, u32 screen_height, f32 mouse_x, f32 mouse_y, key current_key_pressed, Font_Atlas font_atlas) noexcept{
                 if(not gui_is_focused) return;
+                font_width = (f32)screen_width / font_atlas.extent.width;
+                font_height = (f32)screen_height / font_atlas.extent.height;
                 //gui.key_mapping[(size_t)key_action::left] = key::h;
                 if(key_mapping[(size_t)key_action::down] == current_key_pressed and not just_moved_cursor){
                         s8 closest_element_index = -1;
@@ -96,24 +100,25 @@ struct UI {
         }
 
         struct Rect{
-                f32 x,y,w,h,r,g,b,a,tu,tv,tw,th;
+                f32 x,y,w,h,tu = 0,tv = 0,tw = 1,th = 1;
+                Color color;
         };
 
         struct Mesh{
-                std::vector<glm::vec2> vertices; 
-                std::vector<glm::vec2> texuvs;
-                std::vector<glm::vec4> colors;
+                std::vector<glm::vec2> positions; 
+                std::vector<Texuv> texuvs;
+                std::vector<Color> colors;
                 std::vector<u32> indices;
                 constexpr auto add_rect(Rect rect, u32 index) {
-                        vertices.push_back({rect.x, rect.y});
-                        vertices.push_back({rect.x+rect.w, rect.y});
-                        vertices.push_back({rect.x, rect.y+rect.h});
-                        vertices.push_back({rect.x+rect.w, rect.y+rect.h});
-                        for(auto i = 0; i < 4; ++i) colors.push_back({rect.r, rect.g, rect.b, rect.a});
-                        texuvs.push_back({rect.tu, rect.tv});
-                        texuvs.push_back({rect.tu + rect.tw, rect.tv});
-                        texuvs.push_back({rect.tu, rect.tv + rect.th});
-                        texuvs.push_back({rect.tu + rect.tw, rect.tv + rect.th});
+                        positions.push_back({rect.x,            rect.y});
+                        positions.push_back({rect.x+rect.w,     rect.y});
+                        positions.push_back({rect.x,            rect.y+rect.h});
+                        positions.push_back({rect.x+rect.w,     rect.y+rect.h});
+                        for(auto i = 0; i < 4; ++i) colors.push_back(rect.color);
+                        texuvs.push_back({rect.tu,              rect.tv});
+                        texuvs.push_back({rect.tu + rect.tw,    rect.tv});
+                        texuvs.push_back({rect.tu,              rect.tv + rect.th});
+                        texuvs.push_back({rect.tu + rect.tw,    rect.tv + rect.th});
                         indices.push_back(index+0);
                         indices.push_back(index+1);
                         indices.push_back(index+2);
@@ -128,16 +133,20 @@ struct UI {
                 Mesh mesh;
                 //draw grid.
 
-                auto grid_row_size = 0;
+                //calculate bounding box size
+                auto grid_row_length = 0;
+
                 for(auto i = 0; i < elements_to_render_count; ++i){
                 auto const & element = elements[elements_to_render[i]];
                         if(element.type == Element::type::button){
-                                // auto button_size = strlen(element.name);
-                                // if(grid_row_size < button_size) grid_row_size = button_size;
-                        } 
+                                auto button_size = strlen(element.name);
+                                if(grid_row_length < button_size) grid_row_length = button_size;
+                        }
                 }
 
-                mesh.add_rect({-1, -1, 1, 2, .5, .2, .5, .5, 0, 0, 0, 0}, 0);
+                mesh.add_rect({.x = -1, .y =  -1, .w =  2 * (2.0/5), .h = 2, .color = {1, 0, 1, 1}}, 0);
+
+
 
                 // auto grid_col_size = (grid.width / (f32)100);
                 // auto grid_row_size = (grid.height / (f32)grid.rows);
