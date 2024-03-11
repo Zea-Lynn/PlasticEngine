@@ -27,12 +27,62 @@ struct UI {
         //As fraction of sceenspace
         f32 font_width = 0, font_height = 0;
 
-        //TODO support more than halfwidth.
+        //TODO support more than halfwidth ascii.
         struct Font_Atlas{
-                struct extent{ u16 width, height; } extent;
-                struct char_extent{ u8 width, height;} char_extent;
-                struct offset{ u8 x, y; } offsets[INT8_MAX] = {0,0};
-        } atlas;
+                struct extent{ u16 width = 0, height = 0; } extent;
+                u8 line_height = 0;
+                struct Offset{ u16 x = 0, y = 0, w = 0, h = 0; } offsets[INT8_MAX];
+                u8 * bitmap = nullptr;
+                stbtt_fontinfo font_info;
+                stbtt_packedchar packed_chars[UINT8_MAX] = {0};
+        } * atlas;
+
+        static inline auto load_ttf_font(char const * path){
+                auto file = std::ifstream(path, std::ios::ate | std::ios::binary);
+                if(not file){
+                        puts("file does not exist");
+                        exit(420);
+                }
+                auto const fileSize = (size_t)file.tellg();
+                auto buffer = std::vector<u8>(fileSize);
+                file.seekg(0);
+                //Why does this have to be char.
+                file.read(reinterpret_cast<char *>(buffer.data()), fileSize);
+                std::puts(std::format("loading font {} with bytecount {}", path, buffer.size()).c_str());
+                return buffer;
+        }
+
+        static inline auto generate_font_atlas(char const * font_path, size_t line_height) noexcept -> std::optional<Font_Atlas>{
+                Font_Atlas atlas;
+                atlas.line_height = line_height;
+                auto const font = load_ttf_font(font_path);
+                stbtt_fontinfo * info = &atlas.font_info;
+                if(not stbtt_InitFont(info, font.data(), 0)) return std::nullopt;
+
+                f32 scale = stbtt_ScaleForPixelHeight(info, line_height);
+                s32 ascent, descent, line_gap;
+                stbtt_GetFontVMetrics(info, &ascent, &descent, &line_gap);
+
+                atlas.extent.width = line_height * 50; 
+                atlas.extent.height = line_height;
+                //TODO pass in allocator.
+                atlas.bitmap = (u8*)malloc(atlas.extent.width * atlas.extent.height);
+                stbtt_pack_context pc;
+                stbtt_PackBegin(&pc, atlas.bitmap, atlas.extent.width, atlas.extent.height, 0, 1, nullptr);
+                stbtt_PackFontRange(&pc, font.data(), 0, (f32)line_height, 0, INT8_MAX, atlas.packed_chars);
+                stbtt_PackEnd(&pc);
+                for(auto i = 0; i < INT8_MAX; ++i){
+                        auto packed_stuff = atlas.packed_chars[i];
+                        atlas.offsets[i]  = {
+                                .x = packed_stuff.x0,
+                                .y = packed_stuff.y0,
+                                .w = (u16)(packed_stuff.x1 - packed_stuff.x0),
+                                .h = (u16)(packed_stuff.y1 - packed_stuff.y0),
+                        };
+                }
+                stbi_write_png("test.png", atlas.extent.width, atlas.extent.height, STBI_grey, atlas.bitmap, 0);
+                return atlas;
+        }
 
         //This is increment for every element rendered.
         u8 current_element_count = 0;
@@ -45,21 +95,15 @@ struct UI {
                                 return glm::distance(glm::vec2{pos.col, col}, glm::vec2{pos.row, row});
                         }
                 }position;
-                enum class type: u8{
+                enum class Type: u8{
                         none,
                         button,
                         field_f32,
                 }type;
-                u8 style_index;
-
-        } elements[max_element_count] = {"", {}, Element::type::none, 0};
+        } elements[max_element_count] = {"", {}, Element::Type::none, 0};
         //This gets remade every frame.
-        u8 elements_to_render_count = 0;
-        s8 elements_to_render[max_element_count] = {-1};
-
-        struct style{
-                Color resting_color, hot_color, active_color;
-        } styles[max_element_count];
+        u8 elements_to_draw_count = 0;
+        s8 elements_to_draw[max_element_count] = {-1};
 
         //Also begins
         static inline constexpr auto initalize() noexcept -> UI {
@@ -75,10 +119,11 @@ struct UI {
                 return gui;
         }
 
-        inline constexpr auto begin(u32 screen_width, u32 screen_height, f32 mouse_x, f32 mouse_y, key current_key_pressed, Font_Atlas font_atlas) noexcept{
+        inline constexpr auto begin(u32 screen_width, u32 screen_height, f32 mouse_x, f32 mouse_y, key current_key_pressed, Font_Atlas * atlas) noexcept{
+                this->screen_width = screen_width;  
+                this->screen_height = screen_height;
+                this->atlas = atlas;
                 if(not gui_is_focused) return;
-                font_width = (f32)screen_width / font_atlas.extent.width;
-                font_height = (f32)screen_height / font_atlas.extent.height;
                 //gui.key_mapping[(size_t)key_action::left] = key::h;
                 if(key_mapping[(size_t)key_action::down] == current_key_pressed and not just_moved_cursor){
                         s8 closest_element_index = -1;
@@ -109,7 +154,14 @@ struct UI {
                 std::vector<Texuv> texuvs;
                 std::vector<Color> colors;
                 std::vector<u32> indices;
-                constexpr auto add_rect(Rect rect, u32 starting_vertex_index) {
+                constexpr auto add_rect(Rect rect) {
+                        indices.push_back(positions.size()+0);
+                        indices.push_back(positions.size()+1);
+                        indices.push_back(positions.size()+2);
+                        indices.push_back(positions.size()+2);
+                        indices.push_back(positions.size()+1);
+                        indices.push_back(positions.size()+3);
+
                         positions.push_back({rect.x,            rect.y});
                         positions.push_back({rect.x+rect.w,     rect.y});
                         positions.push_back({rect.x,            rect.y+rect.h});
@@ -119,55 +171,86 @@ struct UI {
                         texuvs.push_back({rect.tu + rect.tw,    rect.tv});
                         texuvs.push_back({rect.tu,              rect.tv + rect.th});
                         texuvs.push_back({rect.tu + rect.tw,    rect.tv + rect.th});
-                        indices.push_back(starting_vertex_index+0);
-                        indices.push_back(starting_vertex_index+1);
-                        indices.push_back(starting_vertex_index+2);
-                        indices.push_back(starting_vertex_index+2);
-                        indices.push_back(starting_vertex_index+1);
-                        indices.push_back(starting_vertex_index+3);
                 }
         };
 
+        constexpr auto reset_elements_to_draw() noexcept{
+                std::fill(elements_to_draw, elements_to_draw + max_element_count, -1);
+                elements_to_draw_count = 0;
+        }
 
         constexpr auto finish_and_draw() noexcept {
-                Mesh mesh;
-                //draw grid.
-
+                //TODO store this in preallocated area.
+                auto mesh = Mesh{};
                 //calculate bounding box size
                 auto grid_row_length = 0;
 
-                for(auto i = 0; i < elements_to_render_count; ++i){
-                auto const & element = elements[elements_to_render[i]];
-                        if(element.type == Element::type::button){
+                for(auto i = 0; i < elements_to_draw_count; ++i){
+                auto const & element = elements[elements_to_draw[i]];
+                        if(element.type == Element::Type::button){
                                 auto button_size = strlen(element.name);
                                 if(grid_row_length < button_size) grid_row_length = button_size;
                         }
                 }
 
-                mesh.add_rect({.x = -.9, .y= -.9, .w=2, .h = 2, .color = {0,1,0,1}}, 0);
-                mesh.add_rect({.w =  2 * (2.0/5), .h = 2, .color = {1, 0, 1, 1}}, 4);
+                u32 current_index = 0;
 
-                //Reset.
-                std::fill(elements_to_render, elements_to_render + max_element_count, -1);
+                for(auto i = 0; i < elements_to_draw_count; ++i){
+                        auto const & element = elements[elements_to_draw[i]];
+                        if(element.type == Element::Type::button){
+                                //TODO: dont use a c string.
+                                auto char_count = strlen(element.name);
 
+                                auto button_y = -1 + (f32)(atlas->line_height * i)/screen_height;
+                                auto current_char_offset = 0;
+
+                                for(auto c = 0; c < char_count; ++c){
+                                        auto atlas_offset = atlas->offsets[element.name[c]];
+                                        auto char_height = (f32)atlas_offset.h/screen_height;
+                                        mesh.add_rect({
+                                                .x = (f32)current_char_offset/screen_width - 1,
+                                                .y = button_y + (((f32)atlas->line_height/screen_height) - char_height),
+                                                .w = (f32)atlas_offset.w/screen_width,
+                                                .h = char_height,
+                                                .tu = (f32)atlas_offset.x/atlas->extent.width,
+                                                .tv = (f32)atlas_offset.y/atlas->extent.height,
+                                                .tw = (f32)atlas_offset.w/atlas->extent.width,
+                                                .th = (f32)atlas_offset.h/atlas->extent.height,
+                                                .color = {1,1,1,1},
+                                        });
+                                        current_char_offset += atlas->offsets[element.name[c]].w;
+                                }
+                                //Background.
+                                // mesh.add_rect({
+                                //         .x = -1, 
+                                //         .y= button_y, 
+                                //         .w=button_width, 
+                                //         .h = screen_space_character_height, 
+                                //         .color = {0,1,0,1}
+                                // });
+                        }
+                }
+
+                reset_elements_to_draw();
                 return mesh;
         }
 
-        inline auto add_element_to_render(s8 element_id) noexcept{
-                elements_to_render[elements_to_render_count] = element_id;
-                ++elements_to_render_count;
+
+        inline auto add_element_to_draw(s8 element_id) noexcept{
+                elements_to_draw[elements_to_draw_count] = element_id;
+                ++elements_to_draw_count;
         }
 
         //if the button id value is less than 0 one will be assigned to the value passed in.
         //if the id is null than it will not render the button.
-        inline auto button(s8 * button_id, char const * string, style = {{.5,0,.5,1}, {.7,0,.7,1}, {1,.5,1,1}}) noexcept -> bool{
+        inline auto button(s8 * button_id, char const * string) noexcept -> bool{
                 if(button_id == nullptr) return false;
                 if(*button_id < 0){
                         *button_id = current_element_count;
                         elements[*button_id] = {
                                 .name = string,
                                 .position={.col=0,.row=1,.width=static_cast<u8>(strlen(string)), .height =1 }, 
-                                .type=Element::type::button, 
+                                .type=Element::Type::button, 
                         };
                         ++current_element_count;
                 }  
@@ -175,7 +258,7 @@ struct UI {
                         if(current_key_pressed == key_mapping[(size_t)key_action::activate]) element_is_active = true;
                         else element_is_active = false;
                 }
-                add_element_to_render(*button_id);
+                add_element_to_draw(*button_id);
                 return *button_id == element_under_cursor and element_is_active;
         }
 };

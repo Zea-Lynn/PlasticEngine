@@ -31,5 +31,14 @@ using Texuv = vec2;
 using Color = vec4;
 using Normal = vec3;
 
+#define STB_IMAGE_STATIC
 #define STB_IMAGE_IMPLEMENTATION
 #include "./stb/stb_image.h"
+#define STBRP_STATIC
+#define STB_RECT_PACK_IMPLEMENTATION
+#include "./stb/stb_rect_pack.h"
+#define STBTT_STATIC
+#define STB_TRUETYPE_IMPLEMENTATION
+#include "./stb/stb_truetype.h"
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "./stb/stb_image_write.h"

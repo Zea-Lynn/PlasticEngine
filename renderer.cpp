@@ -805,7 +805,7 @@ struct Render_State {
                         std::exit(1);
                 }
 
-                auto create_shader_module = [&device_functions, state](std::filesystem::path path) -> VkShaderModule {
+                auto load_shader_module = [&device_functions, state](std::filesystem::path path) -> VkShaderModule {
                         std::puts("creating shader module");
                         auto file = std::ifstream(path.string(), std::ios::ate | std::ios::binary);
                         auto const fileSize = (size_t)file.tellg();
@@ -828,7 +828,7 @@ struct Render_State {
                         return module;
                 };
 
-                auto const vertex_shader_module = create_shader_module("shader.vert.spv");
+                auto const vertex_shader_module = load_shader_module("shader.vert.spv");
                 auto const vertex_shader_stage_create_info = VkPipelineShaderStageCreateInfo{
                         .sType = vku::GetSType<VkPipelineShaderStageCreateInfo>(),
                         .pNext = nullptr,
@@ -838,7 +838,7 @@ struct Render_State {
                         .pName = "main",
                 };
 
-                auto const fragment_shader_module = create_shader_module("shader.frag.spv");
+                auto const fragment_shader_module = load_shader_module("shader.frag.spv");
                 auto const fragment_shader_stage_create_info = VkPipelineShaderStageCreateInfo{
                         .sType = vku::GetSType<VkPipelineShaderStageCreateInfo>(),
                         .pNext = nullptr,
@@ -1052,6 +1052,7 @@ struct Render_State {
                         .compareOp = VK_COMPARE_OP_ALWAYS,
                         .minLod = 0.0f,
                         .maxLod = 0.0f,
+                        // .borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
                         .borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
                         .unnormalizedCoordinates = VK_FALSE,
                 };
@@ -1448,7 +1449,6 @@ struct Render_State {
                 device_functions.vkFreeCommandBuffers(device, command_pool, 1, &copy_command_buffer);
         };
 
-
         template <typename T> 
         constexpr auto stage_and_copy_buffer(T *data, u64 size, VkBufferUsageFlags usage) noexcept{
                 struct Buffer_Handle_and_Memory { VkDeviceMemory memory; VkBuffer buffer; }; 
@@ -1518,7 +1518,7 @@ struct Render_State {
                 u32 memory_type_bits = 0;
                 VkDeviceSize allocation_size = 0;
                 for(auto i = 0; i < buffer_count; ++i){
-                        allocation_size += buffer_memory_requirements[i].size;
+                        allocation_size += calculate_buffer_offset(buffer_memory_requirements[i].size, vertex_index_test_buffer_memory_requirements.alignment);
                         memory_type_bits |= buffer_memory_requirements[i].memoryTypeBits;
                 }
                 return VkMemoryAllocateInfo{
@@ -1588,6 +1588,7 @@ struct Render_State {
                 if(colors) copy_data_to_device_buffer<Color>(vertex_count, colors, ui.colors);
         }
 
+        //Expects grey bitmap rn.
         inline void load_ui_texture(int width, int height, u8 * const data) noexcept{
                 VkDeviceSize image_size = width * height * 4;
                 VkBuffer staging_buffer;
@@ -1595,7 +1596,13 @@ struct Render_State {
                 create_buffer(VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, image_size, &staging_buffer, &staging_memory);
                 void * mapped_memory;
                 device_functions.vkMapMemory(device, staging_memory, 0, image_size, 0, &mapped_memory);
-                memcpy(mapped_memory, data, image_size);
+                //TODO: dont do this
+                for(auto i = 0; i < width * height; ++i){
+                        reinterpret_cast<u8 *>(mapped_memory)[i*4+0] = data[i];
+                        reinterpret_cast<u8 *>(mapped_memory)[i*4+1] = data[i];
+                        reinterpret_cast<u8 *>(mapped_memory)[i*4+2] = data[i];
+                        reinterpret_cast<u8 *>(mapped_memory)[i*4+3] = data[i];
+                }
                 device_functions.vkUnmapMemory(device, staging_memory);
 
                 auto const image_extent = VkExtent3D{static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1};

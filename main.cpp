@@ -83,7 +83,6 @@ int main() noexcept {
                         exit(420);
                 }
                 renderer.load_terrain_texture(x, y, texture);
-                renderer.load_ui_texture(x, y, texture);
         }
         {
                 renderer.player_mesh = renderer.load_static_mesh32(gltf_points, pos_count, gltf_indices.data(), gltf_indices.size(), gltf_texcoords);
@@ -120,15 +119,19 @@ int main() noexcept {
         float x_offset = 0;
         bool dragging = false;
 
+        auto font_atlas = UI::generate_font_atlas("ComicShannsMonoNerdFontMono-Regular.ttf", 100);
+        if(not font_atlas) puts("no font atlas");
+        renderer.load_ui_texture(font_atlas->extent.width, font_atlas->extent.height, font_atlas->bitmap);
 
         while (true /* not glfwWindowShouldClose(window) */) {
                 glfwPollEvents();
-                ui.begin(1, 1, 0,0, key::none, UI::Font_Atlas{{400,400}, {20,20}, {0,0}});
+                ui.begin(renderer.swapchain_extent.width, renderer.swapchain_extent.height, 0,0, key::none, &font_atlas.value());
                 if(ui.button(&something_button_id, "Something")){
                         //TODO: do button stuff.
                 }
                 auto gui_data = ui.finish_and_draw();
                 renderer.load_ui_data(gui_data.indices.size(), gui_data.indices.data(), gui_data.positions.size(), gui_data.positions.data(), gui_data.texuvs.data(), gui_data.colors.data());
+
                 // render_state.ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
                 // render_state.ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f,0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
                 // render_state.ubo.projection = glm::perspective(glm::radians(45.0f), render_state.swapchain_extent.width / (float) render_state.swapchain_extent.height, 0.1f, 10.0f);
