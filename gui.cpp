@@ -205,11 +205,13 @@ struct UI {
                                 auto current_char_offset = 0;
 
                                 for(auto c = 0; c < char_count; ++c){
+                                        auto stb_data = atlas->packed_chars[element.name[c]];
+                                        auto char_y_offset = stb_data.yoff2/screen_height;
                                         auto atlas_offset = atlas->offsets[element.name[c]];
                                         auto char_height = (f32)atlas_offset.h/screen_height;
                                         mesh.add_rect({
                                                 .x = (f32)current_char_offset/screen_width - 1,
-                                                .y = button_y + (((f32)atlas->line_height/screen_height) - char_height),
+                                                .y = button_y + char_y_offset + (((f32)atlas->line_height/screen_height) - char_height),
                                                 .w = (f32)atlas_offset.w/screen_width,
                                                 .h = char_height,
                                                 .tu = (f32)atlas_offset.x/atlas->extent.width,
@@ -218,7 +220,7 @@ struct UI {
                                                 .th = (f32)atlas_offset.h/atlas->extent.height,
                                                 .color = {1,1,1,1},
                                         });
-                                        current_char_offset += atlas->offsets[element.name[c]].w;
+                                        current_char_offset += stb_data.xadvance;
                                 }
                                 //Background.
                                 // mesh.add_rect({
