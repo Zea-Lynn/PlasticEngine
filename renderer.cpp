@@ -500,8 +500,9 @@ struct Render_State {
 
                 auto const vkCreateInstance = load_vulkan_function<PFN_vkCreateInstance>("vkCreateInstance");
 
-                if (vkCreateInstance(&instantce_info, state->vulkan_allocator, &state->instance) not_eq VK_SUCCESS) {
-                        std::puts("Unable to create vulkan instance.\n");
+                if (auto result = vkCreateInstance(&instantce_info, state->vulkan_allocator, &state->instance); result not_eq VK_SUCCESS) {
+                        puts(std::format("Unable to create vulkan instance: {}", string_VkResult(result)).c_str());
+			exit(69);
                 }
                 state->vkGetInstanceProcAddr = load_vulkan_function<PFN_vkGetInstanceProcAddr>(state->instance, "vkGetInstanceProcAddr");
                 state->load_instance_functions();
