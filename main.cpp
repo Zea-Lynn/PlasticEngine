@@ -1,5 +1,5 @@
-
 #include "includes.h"
+
 #include "mesh.cpp"
 #include "renderer.cpp"
 #include "gui.cpp"
@@ -95,10 +95,15 @@ int main() noexcept {
         renderer.allocate_ui(420, 69420);
 
         s8 something_button_id = -1;
+        s8 blerg_button = -1;
         s8 exit_button = -1;
+        s8 frame_field = -1;
+        u64 frame_count = 0;
         bool ui_should_close = false;
         bool ui_should_open = false;
         bool ui_open = false;
+        UI::Action ui_action = UI::Action::none;
+        int key_to_wait_for_release = 0;
 
         // for (auto i = 0; i < renderer.swapchain_image_count; ++i) renderer.record_command_buffers(i);
 
@@ -138,32 +143,50 @@ int main() noexcept {
                 if(ui_should_close) ui_open = false;
                 if(ui_open){
                         ui.ui_is_focused = true;
-                        auto current_key = key::none;
-                        ui.element_under_cursor = something_button_id;
                         if(glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS){
                                 ui.element_is_active = true;
                         }else{
                                 ui.element_is_active = false;
                         }
 
-                        ui.begin(renderer.swapchain_extent.width, renderer.swapchain_extent.height, &font_atlas.value());
                         if(ui.button(&something_button_id, "Something")){
                                 puts("lakjdfkjasl;fjals;jflasjf;lkajdfl;ajsdf;ljas;dlfjlasjdflads");
                         }
+                        if(ui.button(&blerg_button, "BLerg")){
+                                puts("blerg");
+                        }
+                        if(ui.field_s64(&frame_field, "Blerg", (++frame_count))){ }
                         if(ui.button(&exit_button, "Exit")){
                                 exit(420);
                         }
-                        auto gui_data = ui.finish_and_draw();
+
+                        if(glfwGetKey(window, GLFW_KEY_J) == GLFW_PRESS ){
+                                if(ui_action == UI::Action::none and key_to_wait_for_release not_eq GLFW_KEY_J){
+                                        ui_action = UI::Action::down;
+                                }else if(ui_action == UI::Action::down){
+                                        ui_action = UI::Action::none;
+                                        key_to_wait_for_release = GLFW_KEY_J;
+                                }
+                        }else if(glfwGetKey(window, GLFW_KEY_J) == GLFW_RELEASE){
+                                if(key_to_wait_for_release == GLFW_KEY_J) key_to_wait_for_release = 0;
+                        }
+                        if(glfwGetKey(window, GLFW_KEY_K) == GLFW_PRESS ){
+                                if(ui_action == UI::Action::none and key_to_wait_for_release not_eq GLFW_KEY_K){
+                                        ui_action = UI::Action::up;
+                                }else if(ui_action == UI::Action::up){
+                                        ui_action = UI::Action::none;
+                                        key_to_wait_for_release = GLFW_KEY_K;
+                                }
+                        }else if(glfwGetKey(window, GLFW_KEY_K) == GLFW_RELEASE){
+                                if(key_to_wait_for_release == GLFW_KEY_K) key_to_wait_for_release = 0;
+                        }
+
+                        auto gui_data = ui.finish_and_draw(renderer.swapchain_extent.width, renderer.swapchain_extent.height, &font_atlas.value(), ui_action);
                         renderer.load_ui_data(gui_data.indices.size(), gui_data.indices.data(), gui_data.positions.size(), gui_data.positions.data(), gui_data.texuvs.data(), gui_data.colors.data());
                 }else{
+                        ui.ui_is_focused = false;
                         renderer.load_ui_data(0, nullptr, 0, nullptr, nullptr, nullptr);
                 }
-
-
-                // render_state.ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-                // render_state.ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f,0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-                // render_state.ubo.projection = glm::perspective(glm::radians(45.0f), render_state.swapchain_extent.width / (float) render_state.swapchain_extent.height, 0.1f, 10.0f);
-                // auto const model = glm::rotate(glm::mat4(1.0f), time * glm::radians(180.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
                 // render_state.ubo.model = model;
                 memcpy(renderer.player_ubo_mapped_memory, &renderer.player_ubo, sizeof(Ubo));

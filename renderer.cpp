@@ -1,9 +1,6 @@
 #pragma once
-
 #include "defines.h"
 #include "includes.h"
-#include "mesh.cpp"
-#include "vulkan/vulkan_core.h"
 
 
 constexpr s64 max_frames_in_flieght = 2;

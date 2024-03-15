@@ -14,7 +14,7 @@ using u8 = uint8_t;
 using f64 = double;
 using f32 = float;
 
-enum class key : u8 {
+enum class Key : u8 {
   none = 0,
   ctrl = 1,
   alt = 2,
