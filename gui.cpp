@@ -18,7 +18,7 @@ struct UI {
         }; 
         key current_key_pressed = key::none;
         key key_mapping[(size_t)key_action::key_action_count];
-        bool gui_is_focused;
+        bool ui_is_focused;
         u8 element_under_cursor;
         bool just_moved_cursor;
         bool element_is_active;
@@ -52,16 +52,13 @@ struct UI {
                 return buffer;
         }
 
-        static inline auto generate_font_atlas(char const * font_path, size_t line_height) noexcept -> std::optional<Font_Atlas>{
+        static inline auto generate_font_atlas(u8 const * data, size_t size, size_t line_height)noexcept -> std::optional<Font_Atlas>{
                 Font_Atlas atlas;
                 atlas.line_height = line_height;
-                auto const font = load_ttf_font(font_path);
                 stbtt_fontinfo * info = &atlas.font_info;
-                if(not stbtt_InitFont(info, font.data(), 0)) return std::nullopt;
-
-                f32 scale = stbtt_ScaleForPixelHeight(info, line_height);
-                s32 ascent, descent, line_gap;
-                stbtt_GetFontVMetrics(info, &ascent, &descent, &line_gap);
+                //TODO: fix this
+                if(not stbtt_InitFont(info, data, 0)) return std::nullopt;
+                f32 font_size = stbtt_ScaleForPixelHeight(info, line_height);
 
                 atlas.extent.width = line_height * 50; 
                 atlas.extent.height = line_height;
@@ -69,7 +66,7 @@ struct UI {
                 atlas.bitmap = (u8*)malloc(atlas.extent.width * atlas.extent.height);
                 stbtt_pack_context pc;
                 stbtt_PackBegin(&pc, atlas.bitmap, atlas.extent.width, atlas.extent.height, 0, 1, nullptr);
-                stbtt_PackFontRange(&pc, font.data(), 0, (f32)line_height, 0, INT8_MAX, atlas.packed_chars);
+                stbtt_PackFontRange(&pc, data, 0, line_height, 0, INT8_MAX, atlas.packed_chars);
                 stbtt_PackEnd(&pc);
                 for(auto i = 0; i < INT8_MAX; ++i){
                         auto packed_stuff = atlas.packed_chars[i];
@@ -80,8 +77,17 @@ struct UI {
                                 .h = (u16)(packed_stuff.y1 - packed_stuff.y0),
                         };
                 }
-                stbi_write_png("test.png", atlas.extent.width, atlas.extent.height, STBI_grey, atlas.bitmap, 0);
+                stbi_write_png("font.png", atlas.extent.width, atlas.extent.height, STBI_grey, atlas.bitmap, 0);
                 return atlas;
+        }
+
+        static inline auto generate_font_atlas_from_file(char const * font_path, size_t line_height) noexcept -> std::optional<Font_Atlas>{
+                auto const font = load_ttf_font(font_path);
+                return generate_font_atlas(font.data(), font.size(), line_height);
+        }
+
+        static inline auto genearte_default_font_atlas(size_t line_height){
+                return generate_font_atlas(NotoSans_Regular_ttf, NotoSans_Regular_ttf_len, line_height);
         }
 
         //This is increment for every element rendered.
@@ -119,29 +125,10 @@ struct UI {
                 return gui;
         }
 
-        inline constexpr auto begin(u32 screen_width, u32 screen_height, f32 mouse_x, f32 mouse_y, key current_key_pressed, Font_Atlas * atlas) noexcept{
+        inline constexpr auto begin(u32 screen_width, u32 screen_height, Font_Atlas * atlas) noexcept{
                 this->screen_width = screen_width;  
                 this->screen_height = screen_height;
                 this->atlas = atlas;
-                if(not gui_is_focused) return;
-                //gui.key_mapping[(size_t)key_action::left] = key::h;
-                if(key_mapping[(size_t)key_action::down] == current_key_pressed and not just_moved_cursor){
-                        s8 closest_element_index = -1;
-                        for(auto i = 0; i < current_element_count; ++i){
-                                if(i == element_under_cursor) continue;
-                                if(elements[element_under_cursor].position.row < elements[i].position.row){
-                                        if(elements[element_under_cursor].position.distance(elements[i].position) < elements[element_under_cursor].position.distance(elements[closest_element_index].position)){
-                                                closest_element_index = i;
-                                        }
-                                }
-                        }
-                        if(closest_element_index >= 0){
-                                element_under_cursor = closest_element_index;
-                                just_moved_cursor = true;
-                        }
-                }
-                //gui.key_mapping[(size_t)key_action::up] = key::k;
-                //gui.key_mapping[(size_t)key_action::right] = key::l;
         }
 
         struct Rect{
@@ -193,43 +180,38 @@ struct UI {
                         }
                 }
 
-                u32 current_index = 0;
-
                 for(auto i = 0; i < elements_to_draw_count; ++i){
                         auto const & element = elements[elements_to_draw[i]];
+                        bool is_hovered = element_under_cursor == elements_to_draw[i];
                         if(element.type == Element::Type::button){
                                 //TODO: dont use a c string.
                                 auto char_count = strlen(element.name);
 
-                                auto button_y = -1 + (f32)(atlas->line_height * i)/screen_height;
+                                //TODO figure out where the scaling issues are comming from.
+                                auto constexpr m = 2.5f;
+                                auto button_y = -1 + ((f32)(atlas->line_height * i)/screen_height) *m;
                                 auto current_char_offset = 0;
 
                                 for(auto c = 0; c < char_count; ++c){
                                         auto stb_data = atlas->packed_chars[element.name[c]];
-                                        auto char_y_offset = stb_data.yoff2/screen_height;
+                                        auto char_y_offset = (stb_data.yoff2/screen_height) * m;
                                         auto atlas_offset = atlas->offsets[element.name[c]];
-                                        auto char_height = (f32)atlas_offset.h/screen_height;
+                                        auto char_height = ((f32)atlas_offset.h/screen_height) * m;
+                                        auto color = Color{1,1,1,1};
+                                        if(is_hovered) color = Color{1,0,1,1};
                                         mesh.add_rect({
-                                                .x = (f32)current_char_offset/screen_width - 1,
-                                                .y = button_y + char_y_offset + (((f32)atlas->line_height/screen_height) - char_height),
-                                                .w = (f32)atlas_offset.w/screen_width,
+                                                .x = ((f32)current_char_offset/screen_width - 1),
+                                                .y = button_y + char_y_offset + ((((f32)atlas->line_height/screen_height) * m) - char_height),
+                                                .w = ((f32)atlas_offset.w/screen_width) * m,
                                                 .h = char_height,
                                                 .tu = (f32)atlas_offset.x/atlas->extent.width,
                                                 .tv = (f32)atlas_offset.y/atlas->extent.height,
                                                 .tw = (f32)atlas_offset.w/atlas->extent.width,
                                                 .th = (f32)atlas_offset.h/atlas->extent.height,
-                                                .color = {1,1,1,1},
+                                                .color = color,
                                         });
-                                        current_char_offset += stb_data.xadvance;
+                                        current_char_offset += stb_data.xadvance * m;
                                 }
-                                //Background.
-                                // mesh.add_rect({
-                                //         .x = -1, 
-                                //         .y= button_y, 
-                                //         .w=button_width, 
-                                //         .h = screen_space_character_height, 
-                                //         .color = {0,1,0,1}
-                                // });
                         }
                 }
 
@@ -256,10 +238,10 @@ struct UI {
                         };
                         ++current_element_count;
                 }  
-                if(*button_id == element_under_cursor){
-                        if(current_key_pressed == key_mapping[(size_t)key_action::activate]) element_is_active = true;
-                        else element_is_active = false;
-                }
+                // if(*button_id == element_under_cursor){
+                //         if(current_key_pressed == key_mapping[(size_t)key_action::activate]) element_is_active = true;
+                //         else element_is_active = false;
+                // }
                 add_element_to_draw(*button_id);
                 return *button_id == element_under_cursor and element_is_active;
         }

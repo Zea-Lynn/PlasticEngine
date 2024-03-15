@@ -1583,9 +1583,9 @@ struct Render_State {
 
                 ui.index_count = index_count;
                 ui.vertex_count = vertex_count;
-                copy_data_to_device_buffer<u32>(index_count, indices, ui.indices);
-                copy_data_to_device_buffer<glm::vec2>(vertex_count, positions, ui.positions);
-                copy_data_to_device_buffer<Texuv>(vertex_count, texuvs, ui.texuvs);
+                if(indices) copy_data_to_device_buffer<u32>(index_count, indices, ui.indices);
+                if(positions) copy_data_to_device_buffer<glm::vec2>(vertex_count, positions, ui.positions);
+                if(texuvs) copy_data_to_device_buffer<Texuv>(vertex_count, texuvs, ui.texuvs);
                 if(colors) copy_data_to_device_buffer<Color>(vertex_count, colors, ui.colors);
         }
 

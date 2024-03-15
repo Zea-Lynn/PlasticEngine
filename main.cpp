@@ -89,19 +89,16 @@ int main() noexcept {
         }
 
         glfwSetWindowUserPointer(window, &renderer);
-        glfwSetKeyCallback(window, [](GLFWwindow *window, int key, int scancode, int action, int mods) {
-                auto render_state = (Render_State *)glfwGetWindowUserPointer(window);
-                if (key == GLFW_KEY_ESCAPE) {
-                        exit(0);
-                }
-        });
-
         glfwSetWindowCloseCallback(window, [](GLFWwindow *window) { exit(0); });
 
         auto ui = UI::initalize();
         renderer.allocate_ui(420, 69420);
 
         s8 something_button_id = -1;
+        s8 exit_button = -1;
+        bool ui_should_close = false;
+        bool ui_should_open = false;
+        bool ui_open = false;
 
         // for (auto i = 0; i < renderer.swapchain_image_count; ++i) renderer.record_command_buffers(i);
 
@@ -119,18 +116,49 @@ int main() noexcept {
         float x_offset = 0;
         bool dragging = false;
 
-        auto font_atlas = UI::generate_font_atlas("ComicShannsMonoNerdFontMono-Regular.ttf", 100);
+        // auto font_atlas = UI::generate_font_atlas_from_file("/usr/share/fonts/noto/NotoSans-Light.ttf", 50);
+        auto font_atlas = UI::genearte_default_font_atlas(50);
         if(not font_atlas) puts("no font atlas");
         renderer.load_ui_texture(font_atlas->extent.width, font_atlas->extent.height, font_atlas->bitmap);
 
         while (true /* not glfwWindowShouldClose(window) */) {
                 glfwPollEvents();
-                ui.begin(renderer.swapchain_extent.width, renderer.swapchain_extent.height, 0,0, key::none, &font_atlas.value());
-                if(ui.button(&something_button_id, "Something")){
-                        //TODO: do button stuff.
+
+                auto esc_pressed = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS;
+                auto esc_released = glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_RELEASE;
+                if(esc_pressed and not ui_open and not ui_should_open and not ui_should_close){
+                        ui_should_open = true;
                 }
-                auto gui_data = ui.finish_and_draw();
-                renderer.load_ui_data(gui_data.indices.size(), gui_data.indices.data(), gui_data.positions.size(), gui_data.positions.data(), gui_data.texuvs.data(), gui_data.colors.data());
+                if(esc_pressed and ui_open and not ui_should_open and not ui_should_close){
+                        ui_should_close = true;
+                }
+                if(esc_released and ui_open and ui_should_open) ui_should_open = false;
+                if(esc_released and not ui_open and ui_should_close) ui_should_close = false;
+                if(ui_should_open) ui_open = true;
+                if(ui_should_close) ui_open = false;
+                if(ui_open){
+                        ui.ui_is_focused = true;
+                        auto current_key = key::none;
+                        ui.element_under_cursor = something_button_id;
+                        if(glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS){
+                                ui.element_is_active = true;
+                        }else{
+                                ui.element_is_active = false;
+                        }
+
+                        ui.begin(renderer.swapchain_extent.width, renderer.swapchain_extent.height, &font_atlas.value());
+                        if(ui.button(&something_button_id, "Something")){
+                                puts("lakjdfkjasl;fjals;jflasjf;lkajdfl;ajsdf;ljas;dlfjlasjdflads");
+                        }
+                        if(ui.button(&exit_button, "Exit")){
+                                exit(420);
+                        }
+                        auto gui_data = ui.finish_and_draw();
+                        renderer.load_ui_data(gui_data.indices.size(), gui_data.indices.data(), gui_data.positions.size(), gui_data.positions.data(), gui_data.texuvs.data(), gui_data.colors.data());
+                }else{
+                        renderer.load_ui_data(0, nullptr, 0, nullptr, nullptr, nullptr);
+                }
+
 
                 // render_state.ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
                 // render_state.ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f,0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));

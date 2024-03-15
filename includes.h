@@ -42,3 +42,5 @@ using Normal = vec3;
 #include "./stb/stb_truetype.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "./stb/stb_image_write.h"
+
+#include "font.h"
