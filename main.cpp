@@ -19,7 +19,12 @@ int main() noexcept {
 
         // TODO: maybe figure out a better way.
         smol_GLTF gltf; 
-        smol_allocator smol_allocator = {.user_data = nullptr, .allocate = [](auto user_data, auto size){return malloc(size);}, .free = [](auto user_data, auto ptr){free(ptr);}};
+        smol_allocator smol_allocator = {
+                .user_data = nullptr, 
+                .allocate = [](auto user_data, auto size){return malloc(size);}, 
+                .free = [](auto user_data, auto ptr){free(ptr);}
+        };
+
         if(not smol_parse_GLTF(monkey_glb_len, monkey_glb, &gltf, smol_allocator)){
                 puts("error parsing gltf, oopsie");
                 exit(420);
@@ -103,6 +108,9 @@ int main() noexcept {
         s8 frame_field = -1;
         s8 increase_far_plane_id = -1;
         s8 decrease_far_plane_id = -1;
+        s8 fullscrean = -1;
+        s8 exit_fullscrean = -1;
+        bool is_fullscrean = false;
         f32 far_plane = 10;
         u64 frame_count = 0;
         bool ui_should_close = false;
@@ -113,13 +121,15 @@ int main() noexcept {
 
         double mouse_start_x = -1, mouse_start_y = -1;
 
+
         auto const view = glm::lookAt(glm::vec3(5.0f, 5.0f, 5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f));
         auto projection = glm::perspective(glm::radians(45.0f), renderer.swapchain_info.imageExtent.width / (float)renderer.swapchain_info.imageExtent.height, 0.1f, 1000.0f);
         renderer.player_ubo.camera = projection * view;
         renderer.player_ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(1,0,0));
         renderer.terrain_ubo.camera = projection * view;
         renderer.terrain_ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(1,0,0)) * glm::translate(glm::mat4(1.0f), {-.5f, -.5f, -.5f});
-
+        memcpy(renderer.player_ubo_mapped_memory, &renderer.player_ubo, sizeof(Ubo));
+        memcpy(renderer.terrain_ubo_mapped_memory, &renderer.terrain_ubo, sizeof(Ubo));
         // for(auto i = 0; i < renderer.swapchain_image_count; ++i) renderer.record_command_buffers(i);
 
         auto start_time = std::chrono::high_resolution_clock::now();
@@ -155,6 +165,19 @@ int main() noexcept {
                                 ui.element_is_active = false;
                         }
                         ui.field_s64(&frame_field, "Blerg", (++frame_count));
+                        if(not is_fullscrean){
+                                if(ui.button(&fullscrean, "full screan no boarder")){
+                                        glfwSetWindowMonitor(window, glfwGetPrimaryMonitor(), 0, 0, 1920, 1080, GLFW_DONT_CARE);
+                                        is_fullscrean = true;
+
+                                }
+                        }else{
+                                if(ui.button(&exit_fullscrean, "exit fullscrean")){
+                                        glfwSetWindowMonitor(window, nullptr, 0, 0, width, height, GLFW_DONT_CARE);
+                                        is_fullscrean = false;
+
+                                }
+                        }
                         if(ui.button(&exit_button, "Exit")){
                                 exit(420);
                         }
@@ -186,11 +209,10 @@ int main() noexcept {
                         ui.ui_is_focused = false;
                         renderer.load_ui_data(0, nullptr, 0, nullptr, nullptr, nullptr);
                 }
-                memcpy(renderer.player_ubo_mapped_memory, &renderer.player_ubo, sizeof(Ubo));
-                memcpy(renderer.terrain_ubo_mapped_memory, &renderer.terrain_ubo, sizeof(Ubo));
 
                 auto mouse_state = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);
                 if(mouse_state == GLFW_PRESS){
+                        puts("pressed");
                         if(not dragging){
                                 glfwGetCursorPos(window, &mouse_start_x, &mouse_start_y);
                                 dragging = true;
