@@ -8,6 +8,10 @@
 #include "./smol-gltf/smol_gltf.h"
 
 int main() noexcept {
+        #ifdef DEBUG
+        puts("debug build");
+        #endif
+
         if (not glfwInit()) {
                 puts("Could not initialize GLFW");
                 exit(123);
@@ -52,9 +56,12 @@ int main() noexcept {
         }
 
         const auto width = 512 * 2, height = 512 * 2;
+
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+        auto monitor = glfwGetPrimaryMonitor();
         const auto window = glfwCreateWindow(width, height, "plastic", nullptr, nullptr);
+
         if (not window) {
                 puts("Couldn't get GLFW window");
                 exit(123);
@@ -69,8 +76,6 @@ int main() noexcept {
 
         Render_State renderer;
         Render_State::initalize(&renderer, window);
-
-        // auto imgui = IMGUI::initalize(); 
 
         {
                 auto [points, indices] = create_platform();
@@ -88,16 +93,17 @@ int main() noexcept {
                 renderer.player_mesh = renderer.load_static_mesh32(gltf_points, pos_count, gltf_indices.data(), gltf_indices.size(), gltf_texcoords);
         }
 
-        glfwSetWindowUserPointer(window, &renderer);
         glfwSetWindowCloseCallback(window, [](GLFWwindow *window) { exit(0); });
 
         auto ui = UI::initalize();
         renderer.allocate_ui(420, 69420);
-
         s8 something_button_id = -1;
         s8 blerg_button = -1;
         s8 exit_button = -1;
         s8 frame_field = -1;
+        s8 increase_far_plane_id = -1;
+        s8 decrease_far_plane_id = -1;
+        f32 far_plane = 10;
         u64 frame_count = 0;
         bool ui_should_close = false;
         bool ui_should_open = false;
@@ -105,16 +111,16 @@ int main() noexcept {
         UI::Action ui_action = UI::Action::none;
         int key_to_wait_for_release = 0;
 
-        // for (auto i = 0; i < renderer.swapchain_image_count; ++i) renderer.record_command_buffers(i);
-
         double mouse_start_x = -1, mouse_start_y = -1;
 
         auto const view = glm::lookAt(glm::vec3(5.0f, 5.0f, 5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f));
-        auto const projection = glm::perspective(glm::radians(45.0f), renderer.swapchain_extent.width / (float)renderer.swapchain_extent.height, 0.1f, 10.0f);
+        auto projection = glm::perspective(glm::radians(45.0f), renderer.swapchain_info.imageExtent.width / (float)renderer.swapchain_info.imageExtent.height, 0.1f, 1000.0f);
         renderer.player_ubo.camera = projection * view;
         renderer.player_ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(1,0,0));
         renderer.terrain_ubo.camera = projection * view;
         renderer.terrain_ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(1,0,0)) * glm::translate(glm::mat4(1.0f), {-.5f, -.5f, -.5f});
+
+        // for(auto i = 0; i < renderer.swapchain_image_count; ++i) renderer.record_command_buffers(i);
 
         auto start_time = std::chrono::high_resolution_clock::now();
         float rotation_offset = 0;
@@ -148,14 +154,7 @@ int main() noexcept {
                         }else{
                                 ui.element_is_active = false;
                         }
-
-                        if(ui.button(&something_button_id, "Something")){
-                                puts("lakjdfkjasl;fjals;jflasjf;lkajdfl;ajsdf;ljas;dlfjlasjdflads");
-                        }
-                        if(ui.button(&blerg_button, "BLerg")){
-                                puts("blerg");
-                        }
-                        if(ui.field_s64(&frame_field, "Blerg", (++frame_count))){ }
+                        ui.field_s64(&frame_field, "Blerg", (++frame_count));
                         if(ui.button(&exit_button, "Exit")){
                                 exit(420);
                         }
@@ -181,14 +180,12 @@ int main() noexcept {
                                 if(key_to_wait_for_release == GLFW_KEY_K) key_to_wait_for_release = 0;
                         }
 
-                        auto gui_data = ui.finish_and_draw(renderer.swapchain_extent.width, renderer.swapchain_extent.height, &font_atlas.value(), ui_action);
+                        auto gui_data = ui.finish_and_draw(renderer.swapchain_info.imageExtent.width, renderer.swapchain_info.imageExtent.height, &font_atlas.value(), ui_action);
                         renderer.load_ui_data(gui_data.indices.size(), gui_data.indices.data(), gui_data.positions.size(), gui_data.positions.data(), gui_data.texuvs.data(), gui_data.colors.data());
                 }else{
                         ui.ui_is_focused = false;
                         renderer.load_ui_data(0, nullptr, 0, nullptr, nullptr, nullptr);
                 }
-
-                // render_state.ubo.model = model;
                 memcpy(renderer.player_ubo_mapped_memory, &renderer.player_ubo, sizeof(Ubo));
                 memcpy(renderer.terrain_ubo_mapped_memory, &renderer.terrain_ubo, sizeof(Ubo));
 
@@ -214,9 +211,5 @@ int main() noexcept {
                 }
 
                 renderer.draw_frame();
-
-                // std::this_thread::sleep_for(std::chrono::milliseconds(33));
-                // while (std::getchar() not_eq '\n')
-                //         ;
         }
 }
