@@ -117,7 +117,7 @@ struct Render_State {
         VkImageView *depth_images_views = nullptr;
         VkSampler sampler;
 
-        s64 current_frame = 0;
+        u64 frame_count = 0;
         Ubo player_ubo;
         Ubo terrain_ubo;
 
@@ -532,7 +532,8 @@ struct Render_State {
                 }
                 auto present_modes = allocator.allocate_object<VkPresentModeKHR>(present_mode_count);
                 instance_functions.vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, window_surface, &present_mode_count, present_modes);
-                present_mode = present_modes[0];
+                // present_mode = present_modes[0];
+                present_mode = VK_PRESENT_MODE_MAILBOX_KHR;
                 allocator.deallocate_object(present_modes, present_mode_count);
         }
 
@@ -556,7 +557,7 @@ struct Render_State {
                         .pNext = nullptr,
                         .flags = {},
                         .surface = window_surface,
-                        .minImageCount = surface_capabilities.minImageCount + 1,
+                        .minImageCount =  surface_capabilities.minImageCount + 1,
                         .imageFormat = surface_format.format,
                         .imageColorSpace = surface_format.colorSpace,
                         .imageExtent = surface_capabilities.currentExtent,
@@ -795,11 +796,12 @@ struct Render_State {
                 return indices;
         }
 
+        //TODO: create semaphores as we render images.
         inline void settup_sync(){
-                if(not image_available_semaphores)image_available_semaphores = allocator.allocate_object<VkSemaphore>(swapchain_image_count);
-                if(not render_finished_semaphores)render_finished_semaphores = allocator.allocate_object<VkSemaphore>(swapchain_image_count);
-                if(not image_in_flieght_fences)image_in_flieght_fences = allocator.allocate_object<VkFence>(swapchain_image_count);
-                for (auto i = 0; i < swapchain_image_count; ++i) {
+                if(not image_available_semaphores)image_available_semaphores = allocator.allocate_object<VkSemaphore>(max_frames_in_flieght);
+                if(not render_finished_semaphores)render_finished_semaphores = allocator.allocate_object<VkSemaphore>(max_frames_in_flieght);
+                if(not image_in_flieght_fences)image_in_flieght_fences = allocator.allocate_object<VkFence>(max_frames_in_flieght);
+                for (auto i = 0; i < max_frames_in_flieght; ++i) {
                         auto empty_semaphore_create_info = VkSemaphoreCreateInfo{
                                 .sType = vku::GetSType<VkSemaphoreCreateInfo>(),
                         };
@@ -824,14 +826,14 @@ struct Render_State {
 
         inline void recreate_swapchain() noexcept{
                 destroy_sync();
-                destroy_depth_images();
                 destroy_swapchain_frame_buffers();
+                // destroy_depth_images();
 
                 create_swapchain();
                 create_swapchain_images();
 
+                // create_depth_images();
                 create_swapchain_frame_buffers();
-                create_depth_images();
                 settup_sync();
         }
 
@@ -2095,6 +2097,7 @@ struct Render_State {
                 VkBuffer const player_mesh_buffers[] = {player_mesh.vertex_buffer, player_mesh.texture_uv_buffer};
                 vkCmdBindVertexBuffers(command_buffer, 0, 2, player_mesh_buffers, offsets);
                 vkCmdBindIndexBuffer(command_buffer, player_mesh.index_buffer, 0, VK_INDEX_TYPE_UINT32);
+                memcpy(player_ubo_mapped_memory, &player_ubo, sizeof(Ubo));
                 vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &player_descriptor_set, 0, nullptr);
                 vkCmdDrawIndexed(command_buffer, player_mesh.index_count, 1, 0, 0, 0);
 
@@ -2102,6 +2105,7 @@ struct Render_State {
                 VkBuffer const terrain_mesh_buffers[] = {terrain_mesh.vertex_buffer, terrain_mesh.texture_uv_buffer};
                 vkCmdBindVertexBuffers(command_buffer, 0, 2, terrain_mesh_buffers, offsets);
                 vkCmdBindIndexBuffer(command_buffer, terrain_mesh.index_buffer, 0, VK_INDEX_TYPE_UINT32);
+                memcpy(terrain_ubo_mapped_memory, &terrain_ubo, sizeof(Ubo));
                 vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &terrain_descriptor_set, 0, nullptr);
                 vkCmdDrawIndexed(command_buffer, terrain_mesh.index_count, 1, 0, 0, 0);
 
@@ -2110,10 +2114,11 @@ struct Render_State {
         }
 
         inline auto draw_frame() noexcept {
-                vkDeviceWaitIdle(device);
+                static bool should_recreate_swapchain = false;
+                auto current_frame = frame_count % max_frames_in_flieght;
+
+                // vkDeviceWaitIdle(device);
                 auto &image_in_flieght_fence = image_in_flieght_fences[current_frame];
-                auto &image_available_semaphore = image_available_semaphores[current_frame];
-                auto &render_finished_semaphore = render_finished_semaphores[current_frame];
 
                 if (vkWaitForFences(device, 1, &image_in_flieght_fence, VK_TRUE, 1000) not_eq VK_SUCCESS) {
                         puts("unable to wait for frame fence");
@@ -2122,16 +2127,15 @@ struct Render_State {
                         puts("unable to reset fence");
                 }
 
-                uint32_t swapchain_image_index;
+                auto &image_available_semaphore = image_available_semaphores[current_frame];
+                u32 swapchain_image_index;
                 if (auto result = vkAcquireNextImageKHR(device, swapchain, 1000, image_available_semaphore, image_in_flieght_fence, &swapchain_image_index); result not_eq VK_SUCCESS) {
                         if(result == VK_SUBOPTIMAL_KHR){
                                 puts("sub");
-                                // recreate_swapchain();
                         }else{
                                 puts(std::format("problems aquireing next swapchian image index: {}", string_VkResult(result)).c_str());
                         }
                 }
-
                 record_command_buffers(swapchain_image_index);
 
                 if (vkWaitForFences(device, 1, &image_in_flieght_fence, VK_TRUE, 1000) not_eq VK_SUCCESS) {
@@ -2141,6 +2145,7 @@ struct Render_State {
                         puts("unable to reset fence");
                 }
 
+                auto &render_finished_semaphore = render_finished_semaphores[current_frame];
                 VkPipelineStageFlags wait_dst_stage_mask = VkPipelineStageFlagBits::VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
                 auto const submit_info = VkSubmitInfo{
                         .sType = vku::GetSType<VkSubmitInfo>(),
@@ -2176,7 +2181,7 @@ struct Render_State {
                         puts("could not wait for some reason");
                 }
 
-                current_frame = (current_frame + 1) % max_frames_in_flieght;
+                ++frame_count;
         };
 };
 

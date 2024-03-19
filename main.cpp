@@ -212,7 +212,6 @@ int main() noexcept {
 
                 auto mouse_state = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);
                 if(mouse_state == GLFW_PRESS){
-                        puts("pressed");
                         if(not dragging){
                                 glfwGetCursorPos(window, &mouse_start_x, &mouse_start_y);
                                 dragging = true;
@@ -233,5 +232,6 @@ int main() noexcept {
                 }
 
                 renderer.draw_frame();
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
 }
