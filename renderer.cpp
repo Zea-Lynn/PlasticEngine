@@ -5,19 +5,33 @@
 
 constexpr s64 max_frames_in_flieght = 2;
 
+#define VK_CHECK(expr)                                                                    \
+        do{                                                                               \
+                VkResult result = expr;                                                   \
+                if(result not_eq VK_SUCCESS){                                             \
+                        puts(std::format("problem with \"{}\" at line {} in file {} : {}",\
+                                #expr,                                                    \
+                                __LINE__,                                                 \
+                                __FILE_NAME__,                                            \
+                                string_VkResult(result)).c_str());                        \
+                        abort();                                                          \
+                }                                                                         \
+        }while(0)                                                                         \
+
+
 struct Instance_Functions {
-        PFN_vkCreateDebugUtilsMessengerEXT vkCreateDebugUtilsMessengerEXT;
-        PFN_vkEnumeratePhysicalDevices vkEnumeratePhysicalDevices;
-        PFN_vkGetPhysicalDeviceFeatures vkGetPhysicalDeviceFeatures;
-        PFN_vkGetPhysicalDeviceQueueFamilyProperties vkGetPhysicalDeviceQueueFamilyProperties;
-        PFN_vkGetPhysicalDeviceFormatProperties vkGetPhysicalDeviceFormatProperties;
-        PFN_vkGetPhysicalDeviceMemoryProperties vkGetPhysicalDeviceMemoryProperties;
-        PFN_vkGetPhysicalDeviceProperties vkGetPhysicalDeviceProperties;
-        PFN_vkGetPhysicalDeviceSurfaceSupportKHR vkGetPhysicalDeviceSurfaceSupportKHR;
-        PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR vkGetPhysicalDeviceSurfaceCapabilitiesKHR;
-        PFN_vkGetPhysicalDeviceSurfaceFormatsKHR vkGetPhysicalDeviceSurfaceFormatsKHR;
-        PFN_vkGetPhysicalDeviceSurfacePresentModesKHR vkGetPhysicalDeviceSurfacePresentModesKHR;
-        PFN_vkCreateDevice vkCreateDevice;
+        PFN_vkCreateDebugUtilsMessengerEXT             vkCreateDebugUtilsMessengerEXT            = nullptr;
+        PFN_vkEnumeratePhysicalDevices                 vkEnumeratePhysicalDevices                = nullptr;
+        PFN_vkGetPhysicalDeviceFeatures                vkGetPhysicalDeviceFeatures               = nullptr;
+        PFN_vkGetPhysicalDeviceQueueFamilyProperties   vkGetPhysicalDeviceQueueFamilyProperties  = nullptr;
+        PFN_vkGetPhysicalDeviceFormatProperties        vkGetPhysicalDeviceFormatProperties       = nullptr;
+        PFN_vkGetPhysicalDeviceMemoryProperties        vkGetPhysicalDeviceMemoryProperties       = nullptr;
+        PFN_vkGetPhysicalDeviceProperties              vkGetPhysicalDeviceProperties             = nullptr;
+        PFN_vkGetPhysicalDeviceSurfaceSupportKHR       vkGetPhysicalDeviceSurfaceSupportKHR      = nullptr;
+        PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR  vkGetPhysicalDeviceSurfaceCapabilitiesKHR = nullptr;
+        PFN_vkGetPhysicalDeviceSurfaceFormatsKHR       vkGetPhysicalDeviceSurfaceFormatsKHR      = nullptr;
+        PFN_vkGetPhysicalDeviceSurfacePresentModesKHR  vkGetPhysicalDeviceSurfacePresentModesKHR = nullptr;
+        PFN_vkCreateDevice                             vkCreateDevice                            = nullptr;
 };
 
 struct Ubo {
@@ -59,22 +73,22 @@ template <typename T> static T load_vulkan_function(VkInstance instance, const c
 
 
 //TODO: this needs to be completly refactored so that the models and textures can be packed together and rendered using minimal graphics pipelines.
-struct Render_State {
+struct Render_Context {
 
         GLFWwindow * window;
 
         std::pmr::polymorphic_allocator<u8> allocator;
         VkAllocationCallbacks *vulkan_allocator = nullptr;
-        VkInstance instance;
-        VkSurfaceKHR window_surface;
+        VkInstance instance = VK_NULL_HANDLE;
+        VkSurfaceKHR window_surface = VK_NULL_HANDLE;
         Instance_Functions instance_functions;
         PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
-        VkPhysicalDevice physical_device;
+        VkPhysicalDevice physical_device = VK_NULL_HANDLE;
         VkPhysicalDeviceFeatures physical_device_features;
         VkPhysicalDeviceMemoryProperties physical_device_memory_properties;
         char **enabled_device_extensions;
         u32 device_extension_count;
-        VkDevice device;
+        VkDevice device = VK_NULL_HANDLE;
         PFN_vkGetDeviceProcAddr vkGetDeviceProcAddr = VK_NULL_HANDLE;
 
 
@@ -340,10 +354,9 @@ struct Render_State {
                         .pCode = reinterpret_cast<uint32_t const *>(buffer.data()),
                 };
                 VkShaderModule module;
-                if (vkCreateShaderModule(device, &shader_module_create_info, vulkan_allocator, &module)) {
-                        puts("unable to create shader module");
-                        exit(420);
-                }
+
+                VK_CHECK(vkCreateShaderModule(device, &shader_module_create_info, vulkan_allocator, &module));
+                
                 return module;
         };
 
@@ -356,7 +369,7 @@ struct Render_State {
                 }
 
                 puts("unable to find suitable memory index.");
-                exit(420);
+                abort();
         };
 
         inline auto create_buffer(VkBufferUsageFlags usage, VkMemoryPropertyFlags memory_properties, VkDeviceSize size, VkBuffer *buffer, VkDeviceMemory *buffer_memory)const noexcept{
@@ -380,7 +393,7 @@ struct Render_State {
                 vkBindBufferMemory(device, *buffer, *buffer_memory, 0);
         };
 
-        static inline auto settup_descriptors(Render_State *state) noexcept{
+        static inline auto settup_descriptors(Render_Context *state) noexcept{
                 auto const ui_pool_size = VkDescriptorPoolSize{.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .descriptorCount = 1};
                 auto const ui_pool_info = VkDescriptorPoolCreateInfo{
                         .sType = vku::GetSType<VkDescriptorPoolCreateInfo>(),
@@ -389,21 +402,16 @@ struct Render_State {
                         .pPoolSizes = &ui_pool_size,
                 };
                 VkDescriptorPool ui_pool;
-                if (auto const result = state->vkCreateDescriptorPool(state->device, &ui_pool_info, state->vulkan_allocator, &ui_pool); result not_eq VK_SUCCESS) {
-                        puts(std::format("unable to create descriptor pool ui {}", string_VkResult(result)).c_str());
-                        exit(420);
-                }
+                VK_CHECK(state->vkCreateDescriptorPool(state->device, &ui_pool_info, state->vulkan_allocator, &ui_pool));
+                
                 auto const pool_set_allocate_info = VkDescriptorSetAllocateInfo{
                         .sType = vku::GetSType<VkDescriptorSetAllocateInfo>(),
                         .descriptorPool = ui_pool,
                         .descriptorSetCount = 1,
                         .pSetLayouts = &state->ui.descriptor_set_layout,
                 };
-                if (auto const result = state->vkAllocateDescriptorSets(state->device, &pool_set_allocate_info, &state->ui.descriptor_set); result not_eq VK_SUCCESS) {
-                        puts("unable to allocate ui descriptor set");
-                        exit(420);
-                }
-
+                VK_CHECK(state->vkAllocateDescriptorSets(state->device, &pool_set_allocate_info, &state->ui.descriptor_set));
+                
                 auto const ubo_buffer_size = sizeof(Ubo);
                 // auto const terrain_uniform_descriptor_pool_size = ;
                 constexpr u8 model_count = 2;
@@ -420,11 +428,8 @@ struct Render_State {
                         .pPoolSizes = descriptors_pool_sizes.data(),
                 };
 
-                if (auto const result = state->vkCreateDescriptorPool(state->device, &descriptor_pool_create_info, state->vulkan_allocator, &state->descriptor_pool); result not_eq VK_SUCCESS) {
-                        puts(std::format("unable to create descriptor pool {}", string_VkResult(result)).c_str());
-                        exit(429);
-                }
-
+                VK_CHECK(state->vkCreateDescriptorPool(state->device, &descriptor_pool_create_info, state->vulkan_allocator, &state->descriptor_pool));
+                
                 auto const descriptor_set_allocation_info = VkDescriptorSetAllocateInfo{
                         .sType = vku::GetSType<VkDescriptorSetAllocateInfo>(),
                         .descriptorPool = state->descriptor_pool,
@@ -438,10 +443,7 @@ struct Render_State {
                 };
 
                 for(auto i = 0; i < model_count;++i){
-                        if (auto const result = state->vkAllocateDescriptorSets(state->device, &descriptor_set_allocation_info, descriptor_sets[i]); result not_eq VK_SUCCESS) {
-                                puts(std::format("unable to allocate descriptor set[{}] {}", i, string_VkResult(result)).c_str());
-                                exit(420);
-                        }
+                        VK_CHECK(state->vkAllocateDescriptorSets(state->device, &descriptor_set_allocation_info, descriptor_sets[i]));
                 }
 
                 VkBuffer* ubo_buffers[] = {
@@ -497,27 +499,17 @@ struct Render_State {
                         .pCode = data,
                 };
                 VkShaderModule module;
-                if (vkCreateShaderModule(device, &info, vulkan_allocator, &module)) {
-                        puts("unable to create shader module");
-                        exit(420);
-                }
+                VK_CHECK(vkCreateShaderModule(device, &info, vulkan_allocator, &module));
                 return module;
         }
 
-        inline void get_physical_device_surface_capabilities() noexcept{
-                if (instance_functions.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, window_surface, &surface_capabilities) not_eq VK_SUCCESS) {
-                        puts("unable to get surface capabilities");
-                        exit(39393);
-                }
-        }
+        inline void get_physical_device_surface_capabilities() noexcept{ VK_CHECK(instance_functions.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, window_surface, &surface_capabilities)); }
 
         //TODO: find the correct image format for our aplication
         inline void get_physical_device_surface_format() noexcept{
                 VkSurfaceFormatKHR format;
                 u32 format_count = 0;
-                if (instance_functions.vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, window_surface, &format_count, nullptr) not_eq VK_SUCCESS) {
-                        exit(420);
-                }
+                VK_CHECK(instance_functions.vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, window_surface, &format_count, nullptr));
                 VkSurfaceFormatKHR * formats = allocator.allocate_object<VkSurfaceFormatKHR>(format_count);
                 instance_functions.vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, window_surface, &format_count, formats);
                 surface_format = formats[0];
@@ -527,9 +519,7 @@ struct Render_State {
         //TODO: find correct present mode for application.
         inline void get_physical_device_surface_present_mode(){
                 u32 present_mode_count = 0;
-                if (instance_functions.vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, window_surface, &present_mode_count, nullptr) not_eq VK_SUCCESS) {
-                        exit(39393);
-                }
+                VK_CHECK(instance_functions.vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, window_surface, &present_mode_count, nullptr));
                 auto present_modes = allocator.allocate_object<VkPresentModeKHR>(present_mode_count);
                 instance_functions.vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, window_surface, &present_mode_count, present_modes);
                 // present_mode = present_modes[0];
@@ -573,11 +563,8 @@ struct Render_State {
                         .oldSwapchain = swapchain,
                 };
 
-                if (auto result = vkCreateSwapchainKHR(device, &swapchain_info, vulkan_allocator, &swapchain); result not_eq VK_SUCCESS) {
-                        puts(std::format("unable to create swapchain:{}", string_VkResult(result)).c_str());
-                        exit(2323232);
-                }
-
+                VK_CHECK(vkCreateSwapchainKHR(device, &swapchain_info, vulkan_allocator, &swapchain));
+                
                 graphics_pipeline_viewport = VkViewport{
                         .x = 0,
                         .y = 0,
@@ -594,7 +581,7 @@ struct Render_State {
         }
 
         inline void create_swapchain_images() noexcept{
-                if (vkGetSwapchainImagesKHR(device, swapchain, &swapchain_image_count, nullptr) not_eq VK_SUCCESS) exit(2424242);
+                VK_CHECK(vkGetSwapchainImagesKHR(device, swapchain, &swapchain_image_count, nullptr));
                 swapchain_images = allocator.allocate_object<VkImage>(swapchain_image_count);
                 vkGetSwapchainImagesKHR(device, swapchain, &swapchain_image_count, swapchain_images);
                 swapchain_image_views = allocator.allocate_object<VkImageView>(swapchain_image_count);
@@ -616,10 +603,7 @@ struct Render_State {
                                 .components = {},
                                 .subresourceRange = subresource_range,
                         };
-                        if (vkCreateImageView(device, &image_view_create_info, vulkan_allocator, &swapchain_image_views[i]) not_eq VK_SUCCESS) {
-                                puts("unable to create swapchain image views");
-                                exit(52);
-                        }
+                        VK_CHECK(vkCreateImageView(device, &image_view_create_info, vulkan_allocator, &swapchain_image_views[i]));
                 }
         }
 
@@ -640,10 +624,7 @@ struct Render_State {
                         .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
                 };
                 VkImage image;
-                if (vkCreateImage(device, &image_info, vulkan_allocator, &image) not_eq VK_SUCCESS) {
-                        puts("unable to create vulkan image");
-                        exit(420);
-                }
+                VK_CHECK(vkCreateImage(device, &image_info, vulkan_allocator, &image));
                 VkMemoryRequirements image_memory_requirements;
                 vkGetImageMemoryRequirements(device, image, &image_memory_requirements);
 
@@ -654,15 +635,10 @@ struct Render_State {
                 };
 
                 VkDeviceMemory image_memory;
-                if (vkAllocateMemory(device, &memory_allocate_info, vulkan_allocator, &image_memory) not_eq VK_SUCCESS) {
-                        puts("unable to allocate memory for an image");
-                        exit(420);
-                }
 
-                if (vkBindImageMemory(device, image, image_memory, 0) not_eq VK_SUCCESS) {
-                        exit(420);
-                }
-
+                VK_CHECK(vkAllocateMemory(device, &memory_allocate_info, vulkan_allocator, &image_memory));
+                VK_CHECK(vkBindImageMemory(device, image, image_memory, 0));
+                
                 struct {
                         VkImage image;
                         VkDeviceMemory memory;
@@ -696,9 +672,7 @@ struct Render_State {
                                 .components = {},
                                 .subresourceRange = depth_subresource_range,
                         };
-                        if (vkCreateImageView(device, &depth_image_view_create_info, vulkan_allocator, &depth_images_views[i]) not_eq VK_SUCCESS) {
-                                exit(520);
-                        }
+                        VK_CHECK(vkCreateImageView(device, &depth_image_view_create_info, vulkan_allocator, &depth_images_views[i]));
                 }
         }
 
@@ -745,9 +719,7 @@ struct Render_State {
                                 .height = swapchain_info.imageExtent.height,
                                 .layers = 1,
                         };
-                        if (vkCreateFramebuffer(device, &creat_info, vulkan_allocator, &frame_buffers[i]) not_eq VK_SUCCESS) {
-                                exit(630);
-                        }
+                        VK_CHECK(vkCreateFramebuffer(device, &creat_info, vulkan_allocator, &frame_buffers[i]));
                 }
         }
 
@@ -760,7 +732,7 @@ struct Render_State {
                 frame_buffers = nullptr;
         }
 
-        static inline auto find_queue_family_indices(Render_State * state){
+        static inline auto find_queue_family_indices(Render_Context * state){
                 u32 property_count = 0;
                 state->instance_functions.vkGetPhysicalDeviceQueueFamilyProperties(state->physical_device, &property_count, nullptr);
                 auto properties = std::vector<VkQueueFamilyProperties>(property_count);
@@ -805,13 +777,16 @@ struct Render_State {
                         auto empty_semaphore_create_info = VkSemaphoreCreateInfo{
                                 .sType = vku::GetSType<VkSemaphoreCreateInfo>(),
                         };
-                        if (vkCreateSemaphore(device, &empty_semaphore_create_info, vulkan_allocator, &image_available_semaphores[i]) not_eq VK_SUCCESS) exit(3939);
-                        if (vkCreateSemaphore(device, &empty_semaphore_create_info, vulkan_allocator, &render_finished_semaphores[i]) not_eq VK_SUCCESS) exit(3939);
+                        VK_CHECK(vkCreateSemaphore(device, &empty_semaphore_create_info, vulkan_allocator, &image_available_semaphores[i]));
+                        
+                        VK_CHECK(vkCreateSemaphore(device, &empty_semaphore_create_info, vulkan_allocator, &render_finished_semaphores[i]));
+                        
                         auto fence_create_info = VkFenceCreateInfo{
                                 .sType = vku::GetSType<VkFenceCreateInfo>(),
                                 .flags = VkFenceCreateFlagBits::VK_FENCE_CREATE_SIGNALED_BIT,
                         };
-                        if (vkCreateFence(device, &fence_create_info, vulkan_allocator, &image_in_flieght_fences[i]) not_eq VK_SUCCESS) exit(765987);
+
+                        VK_CHECK(vkCreateFence(device, &fence_create_info, vulkan_allocator, &image_in_flieght_fences[i]));
                 }
         }
 
@@ -825,19 +800,20 @@ struct Render_State {
         }
 
         inline void recreate_swapchain() noexcept{
-                destroy_sync();
+                vkDeviceWaitIdle(device);
+                // destroy_sync();
                 destroy_swapchain_frame_buffers();
-                // destroy_depth_images();
+                destroy_depth_images();
 
                 create_swapchain();
                 create_swapchain_images();
 
-                // create_depth_images();
+                create_depth_images();
                 create_swapchain_frame_buffers();
-                settup_sync();
+                // settup_sync();
         }
 
-        static inline auto initalize(Render_State *state, GLFWwindow * window) noexcept {
+        static inline auto initalize(Render_Context *state, GLFWwindow * window) noexcept {
                 state->window = window;
                 puts("initalizeing vulkan render state");
                 auto app_info = VkApplicationInfo{
@@ -847,7 +823,7 @@ struct Render_State {
                         .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
                         .pEngineName = "plastic",
                         .engineVersion = VK_MAKE_VERSION(1, 0, 0),
-                        .apiVersion = VK_API_VERSION_1_3,
+                        .apiVersion = VK_MAKE_API_VERSION(0,1,3,0),
                 };
 
                 u32 glfw_extension_count;
@@ -866,7 +842,7 @@ struct Render_State {
                                 if(0 == strcmp(name, extension_properties[i].extensionName)) goto has_extension;
                         }
                         puts(std::format("unable to find require vulkan extension: {}", name).c_str());
-                        exit(420);
+                        abort();
                 has_extension:continue;
                 }
 
@@ -886,7 +862,7 @@ struct Render_State {
                                 if(0 == strcmp(layer, layer_properties[i].layerName)) goto has_layer;
                         }
                         puts(std::format("unable to find require vulkan layer: {}", layer).c_str());
-                        exit(420);
+                        abort();
                 has_layer:continue;
                 }
 
@@ -903,11 +879,7 @@ struct Render_State {
                 };
 
                 auto const vkCreateInstance = load_vulkan_function<PFN_vkCreateInstance>("vkCreateInstance");
-
-                if (auto result = vkCreateInstance(&instantce_info, state->vulkan_allocator, &state->instance); result not_eq VK_SUCCESS) {
-                        puts(std::format("Unable to create vulkan instance: {}", string_VkResult(result)).c_str());
-			exit(69);
-                }
+                VK_CHECK(vkCreateInstance(&instantce_info, state->vulkan_allocator, &state->instance));
                 state->vkGetInstanceProcAddr = load_vulkan_function<PFN_vkGetInstanceProcAddr>(state->instance, "vkGetInstanceProcAddr");
                 state->load_instance_functions();
                 auto debug_messenger_info = VkDebugUtilsMessengerCreateInfoEXT{
@@ -928,16 +900,12 @@ struct Render_State {
                 }
                 #endif
 
-                if (glfwCreateWindowSurface(state->instance, window, state->vulkan_allocator, &state->window_surface) not_eq VK_SUCCESS) {
-                        puts("Unable to get surface");
-                        exit(420);
-                }
+                VK_CHECK(glfwCreateWindowSurface(state->instance, window, state->vulkan_allocator, &state->window_surface));
 
                 u32 device_count = 0;
-                if (state->instance_functions.vkEnumeratePhysicalDevices(state->instance, &device_count, nullptr) not_eq VK_SUCCESS or not device_count) {
-                        puts("no physical device.");
-                        exit(420);
-                }
+                VK_CHECK(state->instance_functions.vkEnumeratePhysicalDevices(state->instance, &device_count, nullptr));
+                if (device_count == 0) { puts("no physical devices."); abort(); }
+
                 auto physical_devices = std::vector<VkPhysicalDevice>(device_count);
                 state->instance_functions.vkEnumeratePhysicalDevices(state->instance, &device_count, physical_devices.data());
 
@@ -979,10 +947,8 @@ struct Render_State {
                         .pEnabledFeatures = &state->physical_device_features,
                 };
 
-                if (auto result = state->instance_functions.vkCreateDevice(state->physical_device, &device_create_info, state->vulkan_allocator, &state->device); result not_eq VK_SUCCESS) {
-                        puts(std::format("unable to create device: {}", string_VkResult(result)).c_str());
-                        exit(42);
-                }
+                VK_CHECK(state->instance_functions.vkCreateDevice(state->physical_device, &device_create_info, state->vulkan_allocator, &state->device));
+
                 puts("loading device functions.");
                 state->load_device_functions();
 
@@ -1019,7 +985,7 @@ struct Render_State {
                 }
                 if (not depth_format) {
                         puts("unable to find depth format");
-                        exit(7894238);
+                        abort();
                 }
 
                 state->depth_format = depth_format.value();
@@ -1078,11 +1044,7 @@ struct Render_State {
                         .pDependencies = &subpass_dependency,
                 };
 
-                if (state->vkCreateRenderPass(state->device, &render_pass_create_info, state->vulkan_allocator, &state->render_pass) not_eq VK_SUCCESS) {
-                        puts("unable to create render pass");
-                        exit(1);
-                }
-
+                VK_CHECK(state->vkCreateRenderPass(state->device, &render_pass_create_info, state->vulkan_allocator, &state->render_pass));
 
                 auto const vertex_shader_module = state->load_shader_module("shader.vert.spv");
                 auto const vertex_shader_stage_create_info = VkPipelineShaderStageCreateInfo{
@@ -1313,10 +1275,7 @@ struct Render_State {
                         .pBindings = descriptor_set_bindings.data(),
                 };
 
-                if (state->vkCreateDescriptorSetLayout(state->device, &descriptor_set_info, state->vulkan_allocator, &state->descriptor_set_layout) not_eq VK_SUCCESS) {
-                        puts("unable to create descriptor set layout");
-                        exit(1);
-                }
+                VK_CHECK(state->vkCreateDescriptorSetLayout(state->device, &descriptor_set_info, state->vulkan_allocator, &state->descriptor_set_layout));
 
                 auto const ubo_push_constant_range = VkPushConstantRange{
                         .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
@@ -1334,10 +1293,7 @@ struct Render_State {
                         .pPushConstantRanges = &ubo_push_constant_range,
                 };
 
-                if (state->vkCreatePipelineLayout(state->device, &pipeline_layout_info, state->vulkan_allocator, &state->pipeline_layout) not_eq VK_SUCCESS) {
-                        puts("unable to create pipeline layout");
-                        exit(1);
-                }
+                VK_CHECK(state->vkCreatePipelineLayout(state->device, &pipeline_layout_info, state->vulkan_allocator, &state->pipeline_layout));
 
                 auto const pipeline_create_info = VkGraphicsPipelineCreateInfo{
                         .sType = vku::GetSType<VkGraphicsPipelineCreateInfo>(),
@@ -1438,10 +1394,7 @@ struct Render_State {
                         .bindingCount = 1,
                         .pBindings = &ui_sampler_binding,
                 };
-                if (state->vkCreateDescriptorSetLayout(state->device, &ui_descriptor_set_info, state->vulkan_allocator, &state->ui.descriptor_set_layout) not_eq VK_SUCCESS) {
-                        puts("unable to create descriptor set layout");
-                        exit(1);
-                }
+                VK_CHECK(state->vkCreateDescriptorSetLayout(state->device, &ui_descriptor_set_info, state->vulkan_allocator, &state->ui.descriptor_set_layout));
                 auto const ui_pipeline_layout_info = VkPipelineLayoutCreateInfo{
                         .sType = vku::GetSType<VkPipelineLayoutCreateInfo>(),
                         .pNext = nullptr,
@@ -1451,10 +1404,8 @@ struct Render_State {
                         .pushConstantRangeCount = 0,
                         .pPushConstantRanges = nullptr,
                 };
-                if (state->vkCreatePipelineLayout(state->device, &ui_pipeline_layout_info, state->vulkan_allocator, &state->ui.pipeline_layout) not_eq VK_SUCCESS) {
-                        puts("unable to create pipeline layout");
-                        exit(1);
-                }
+
+                VK_CHECK(state->vkCreatePipelineLayout(state->device, &ui_pipeline_layout_info, state->vulkan_allocator, &state->ui.pipeline_layout));
 
                 auto const ui_pipeline_create_info = VkGraphicsPipelineCreateInfo{
                         .sType = vku::GetSType<VkGraphicsPipelineCreateInfo>(),
@@ -1477,10 +1428,8 @@ struct Render_State {
                 VkGraphicsPipelineCreateInfo pipeline_infos[] = {pipeline_create_info, ui_pipeline_create_info};
                 VkPipeline pipelines[2];
                 puts("making graphics pipelines");
-                if (state->vkCreateGraphicsPipelines(state->device, nullptr, 2, pipeline_infos, state->vulkan_allocator, pipelines) not_eq VK_SUCCESS) {
-                        puts("unable to create graphics pipelines.");
-                        exit(89888);
-                }
+
+                VK_CHECK(state->vkCreateGraphicsPipelines(state->device, nullptr, 2, pipeline_infos, state->vulkan_allocator, pipelines));
 
                 state->graphics_pipeline = pipelines[0];
                 state->ui.pipeline = pipelines[1];
@@ -1491,18 +1440,13 @@ struct Render_State {
                 state->create_depth_images();
                 state->create_swapchain_frame_buffers();
 
-                if (not state->vkCreateCommandPool) {
-                        exit(30);
-                }
                 auto const command_pool_create_info = VkCommandPoolCreateInfo{
                         .sType = vku::GetSType<VkCommandPoolCreateInfo>(),
                         .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
                         .queueFamilyIndex = static_cast<uint32_t>(state->graphics_index),
                 };
-                if (state->vkCreateCommandPool(state->device, &command_pool_create_info, state->vulkan_allocator, &state->command_pool) not_eq VK_SUCCESS) {
-                        puts("unable to create command pool.");
-                        exit(40202);
-                }
+
+                VK_CHECK(state->vkCreateCommandPool(state->device, &command_pool_create_info, state->vulkan_allocator, &state->command_pool));
 
                 settup_descriptors(state);
 
@@ -1514,10 +1458,7 @@ struct Render_State {
                 };
 
                 state->command_buffers = state->allocator.allocate_object<VkCommandBuffer>(state->swapchain_image_count);
-                if (state->vkAllocateCommandBuffers(state->device, &command_buffer_allocate_info, state->command_buffers) not_eq VK_SUCCESS) {
-                        puts("unable to allocate command buffers");
-                        exit(420);
-                }
+                VK_CHECK(state->vkAllocateCommandBuffers(state->device, &command_buffer_allocate_info, state->command_buffers));
 
                 state->vkGetDeviceQueue(state->device, state->present_index, 0, &state->present_queue);
                 state->vkDeviceWaitIdle(state->device);
@@ -1545,10 +1486,8 @@ struct Render_State {
                         .commandBufferCount = 1,
                 };
                 VkCommandBuffer copy_command_buffer;
-                if (vkAllocateCommandBuffers(device, &command_buffer_allocate_info, &copy_command_buffer) not_eq VK_SUCCESS) {
-                        puts("unable to allocate command buffers");
-                        exit(420);
-                }
+                
+                VK_CHECK(vkAllocateCommandBuffers(device, &command_buffer_allocate_info, &copy_command_buffer));
 
                 auto const begin_info = VkCommandBufferBeginInfo{.sType = vku::GetSType<VkCommandBufferBeginInfo>()};
 
@@ -1755,15 +1694,10 @@ struct Render_State {
                         .memoryTypeIndex = find_memory_type(memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT),
                 };
                 VkDeviceMemory memory;
-                if(auto result = vkAllocateMemory(device, &image_alloc_info, vulkan_allocator, &memory); result not_eq VK_SUCCESS){
-                        puts(std::format("Unable to allocate memory for image:{}", string_VkResult(result)).c_str());
-                        exit(420);
-                }
 
-                if(auto result = vkBindImageMemory(device, image, memory, 0); result not_eq VK_SUCCESS){
-                        puts(std::format("Unable to bind memory for image:{}", string_VkResult(result)).c_str());
-                        exit(420);
-                }
+                VK_CHECK(vkAllocateMemory(device, &image_alloc_info, vulkan_allocator, &memory));
+
+                VK_CHECK(vkBindImageMemory(device, image, memory, 0));
 
                 auto const command_buffer_allocate_info = VkCommandBufferAllocateInfo{
                         .sType = vku::GetSType<VkCommandBufferAllocateInfo>(),
@@ -1921,15 +1855,9 @@ struct Render_State {
                         .memoryTypeIndex = find_memory_type(memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT),
                 };
                 VkDeviceMemory memory;
-                if(auto result = vkAllocateMemory(device, &image_alloc_info, vulkan_allocator, &memory); result not_eq VK_SUCCESS){
-                        puts(std::format("Unable to allocate memory for image:{}", string_VkResult(result)).c_str());
-                        exit(420);
-                }
+                VK_CHECK(vkAllocateMemory(device, &image_alloc_info, vulkan_allocator, &memory));
 
-                if(auto result = vkBindImageMemory(device, image, memory, 0); result not_eq VK_SUCCESS){
-                        puts(std::format("Unable to bind memory for image:{}", string_VkResult(result)).c_str());
-                        exit(420);
-                }
+                VK_CHECK(vkBindImageMemory(device, image, memory, 0));
 
                 auto const command_buffer_allocate_info = VkCommandBufferAllocateInfo{
                         .sType = vku::GetSType<VkCommandBufferAllocateInfo>(),
@@ -2132,8 +2060,10 @@ struct Render_State {
                 if (auto result = vkAcquireNextImageKHR(device, swapchain, 1000, image_available_semaphore, image_in_flieght_fence, &swapchain_image_index); result not_eq VK_SUCCESS) {
                         if(result == VK_SUBOPTIMAL_KHR){
                                 puts("sub");
+                                recreate_swapchain();
                         }else{
                                 puts(std::format("problems aquireing next swapchian image index: {}", string_VkResult(result)).c_str());
+                                abort();
                         }
                 }
                 record_command_buffers(swapchain_image_index);

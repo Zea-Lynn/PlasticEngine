@@ -79,8 +79,8 @@ int main() noexcept {
 
         auto allocator = nullptr;
 
-        Render_State renderer;
-        Render_State::initalize(&renderer, window);
+        Render_Context renderer;
+        Render_Context::initalize(&renderer, window);
 
         {
                 auto [points, indices] = create_platform();
@@ -122,14 +122,6 @@ int main() noexcept {
         double mouse_start_x = -1, mouse_start_y = -1;
 
 
-        auto const view = glm::lookAt(glm::vec3(5.0f, 5.0f, 5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f));
-        auto projection = glm::perspective(glm::radians(45.0f), renderer.swapchain_info.imageExtent.width / (float)renderer.swapchain_info.imageExtent.height, 0.1f, 1000.0f);
-        renderer.player_ubo.camera = projection * view;
-        renderer.player_ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(1,0,0));
-        renderer.terrain_ubo.camera = projection * view;
-        renderer.terrain_ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(1,0,0)) * glm::translate(glm::mat4(1.0f), {-.5f, -.5f, -.5f});
-        memcpy(renderer.player_ubo_mapped_memory, &renderer.player_ubo, sizeof(Ubo));
-        memcpy(renderer.terrain_ubo_mapped_memory, &renderer.terrain_ubo, sizeof(Ubo));
         // for(auto i = 0; i < renderer.swapchain_image_count; ++i) renderer.record_command_buffers(i);
 
         auto start_time = std::chrono::high_resolution_clock::now();
@@ -164,7 +156,7 @@ int main() noexcept {
                         }else{
                                 ui.element_is_active = false;
                         }
-                        ui.field_s64(&frame_field, "Blerg", (++frame_count));
+                        ui.field_s64(&frame_field, "Blerg", renderer.frame_count);
                         if(not is_fullscrean){
                                 if(ui.button(&fullscrean, "full screan no boarder")){
                                         glfwSetWindowMonitor(window, glfwGetPrimaryMonitor(), 0, 0, 1920, 1080, GLFW_DONT_CARE);
@@ -210,7 +202,14 @@ int main() noexcept {
                         renderer.load_ui_data(0, nullptr, 0, nullptr, nullptr, nullptr);
                 }
 
+                auto const view = glm::lookAt(glm::vec3(5.0f, 5.0f, 5.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f));
+                auto projection = glm::perspective(glm::radians(45.0f), renderer.swapchain_info.imageExtent.width / (float)renderer.swapchain_info.imageExtent.height, 0.1f, 1000.0f);
+                renderer.player_ubo.camera = projection * view;
+                renderer.player_ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(1,0,0));
+                renderer.terrain_ubo.camera = projection * view;
+                renderer.terrain_ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(1,0,0)) * glm::translate(glm::mat4(1.0f), {-.5f, -.5f, -.5f});
                 auto mouse_state = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);
+
                 if(mouse_state == GLFW_PRESS){
                         if(not dragging){
                                 glfwGetCursorPos(window, &mouse_start_x, &mouse_start_y);
@@ -232,6 +231,6 @@ int main() noexcept {
                 }
 
                 renderer.draw_frame();
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
 }
