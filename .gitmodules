@@ -16,6 +16,6 @@
 [submodule "stb"]
 	path = stb
 	url = git@github.com:nothings/stb.git
-[submodule "smol-gltf"]
-	path = smol-gltf
-	url = git@github.com:zeajenson/smol-gltf.git
+[submodule "plastic-gltf"]
+	path = plastic-gltf
+	url = git@github.com:Zea-Lynn/plastic-gltf.git

@@ -5,7 +5,7 @@
 #include "gui.cpp"
 
 #include "gltf_stuff.cpp"
-#include "./smol-gltf/smol_gltf.h"
+#include "./plastic-gltf/plastic_gltf.h"
 
 int main() noexcept {
         #ifdef DEBUG
@@ -18,14 +18,14 @@ int main() noexcept {
         }
 
         // TODO: maybe figure out a better way.
-        smol_GLTF gltf; 
-        smol_allocator smol_allocator = {
+        pla_GLTF gltf; 
+        pla_allocator pla_allocator = {
                 .user_data = nullptr, 
                 .allocate = [](auto user_data, auto size){return malloc(size);}, 
                 .free = [](auto user_data, auto ptr){free(ptr);}
         };
 
-        if(not smol_parse_GLTF(monkey_glb_len, monkey_glb, &gltf, smol_allocator)){
+        if(not pla_parse_GLTF(monkey_glb_len, monkey_glb, &gltf, pla_allocator)){
                 puts("error parsing gltf, oopsie");
                 exit(420);
         }
@@ -38,7 +38,7 @@ int main() noexcept {
         size_t uv_offset = 0;
         for(auto attribute_index = 0; attribute_index < gltf.meshes[0].primitives[0].attribute_count; ++attribute_index){
                 auto attribute = gltf.meshes->primitives->attributes[attribute_index];
-                if(attribute.name == smol_POSITION){
+                if(attribute.name == pla_POSITION){
                         auto position_view = gltf.buffer_views[gltf.accessors[attribute.accessor].buffer_view];
                         pos_count = gltf.accessors[attribute.accessor].count;
                         pos_byte_length = position_view.byte_length;
@@ -49,7 +49,7 @@ int main() noexcept {
                         pos_index_count = gltf.accessors[gltf.meshes->primitives->indices].count;
 
                 }
-                if(attribute.name == smol_TEXCOORD){
+                if(attribute.name == pla_TEXCOORD){
                         uv_offset = gltf.buffer_views[gltf.accessors[attribute.accessor].buffer_view].byte_offset;
                 }
         }
