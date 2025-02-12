@@ -33,6 +33,8 @@ target_link_options(plastic PRIVATE -fuse-ld=mold)
 target_precompile_headers(plastic PUBLIC includes.h)
 target_sources(plastic PRIVATE main.cpp)
 
+
 target_link_libraries(plastic PRIVATE Vulkan::Headers glfw glm::glm-header-only Vulkan::UtilityHeaders)
+target_link_libraries(plastic PRIVATE "${CMAKE_SOURCE_DIR}/plastic_asset_manager/libmanager.a")
 add_dependencies(plastic shader_target)
 

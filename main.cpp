@@ -4,7 +4,7 @@
 #include "renderer.cpp"
 #include "gui.cpp"
 
-#include "gltf_stuff.cpp"
+#include "static_assets.h"
 #include "./plastic-gltf/plastic_gltf.h"
 
 int main() noexcept {
@@ -17,15 +17,36 @@ int main() noexcept {
                 exit(123);
         }
 
-        // TODO: maybe figure out a better way.
-        pla_GLTF gltf; 
-        pla_allocator pla_allocator = {
-                .user_data = nullptr, 
-                .allocate = [](auto user_data, auto size){return malloc(size);}, 
-                .free = [](auto user_data, auto ptr){free(ptr);}
-        };
+        auto asset_buffer_size = pla_calculate_asset_manager_memory_buffer_size(nullptr, 1, static_assets);
+        auto buffer = malloc(asset_buffer_size);
+        pla_asset_manager asset_manager;
+        if(!pla_initalize_asset_manager(nullptr, 1, static_assets, buffer, &asset_manager)){
+                exit(133);
+        }
 
-        if(not pla_parse_GLTF(monkey_glb_len, monkey_glb, &gltf, pla_allocator)){
+        size_t alien_size = pla_get_asset_size("ayyylmao", &asset_manager);
+        if(alien_size == SIZE_MAX) exit(123);
+        auto alien_buffer = (uint8_t *)malloc(alien_size);
+        if(pla_load_asset("ayyylmao", &asset_manager, &alien_size, alien_buffer)){
+
+        }
+
+        // // TODO: maybe figure out a better way.
+        // pla_allocator pla_allocator = {
+        //         .user_data = nullptr, 
+        //         .allocate = [](auto user_data, auto size){return malloc(size);}, 
+        //         .free = [](auto user_data, auto ptr){free(ptr);}
+        // };
+
+        size_t gltf_buffer_size = 0;
+        if(not pla_parse_GLTF(alien_size, alien_buffer, &gltf_buffer_size, nullptr, nullptr)){
+                puts("error parsing gltf, oopsie");
+                exit(420);
+        }
+
+        u8 * gltf_buffer = (u8 *)malloc(gltf_buffer_size);
+        pla_GLTF gltf; 
+        if(not pla_parse_GLTF(alien_size, alien_buffer, &gltf_buffer_size, gltf_buffer, &gltf)){
                 puts("error parsing gltf, oopsie");
                 exit(420);
         }

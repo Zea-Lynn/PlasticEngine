@@ -40,16 +40,14 @@ struct Ubo {
 };
 
 struct Triangle_Mesh {
-        u64 vertex_count;
-        VkBuffer vertex_buffer;
-        VkDeviceMemory vertex_buffer_memory;
-
-        u64 index_count;
-        VkBuffer index_buffer;
-        VkDeviceMemory index_buffer_memory;
-
-        VkBuffer texture_uv_buffer;
-        VkDeviceMemory texture_uv_buffer_memory;
+        u64 vertex_count = 0;
+        VkBuffer vertex_buffer = VK_NULL_HANDLE;
+        VkDeviceMemory vertex_buffer_memory = VK_NULL_HANDLE;
+        u64 index_count = 0;
+        VkBuffer index_buffer = VK_NULL_HANDLE;
+        VkDeviceMemory index_buffer_memory = VK_NULL_HANDLE;
+        VkBuffer texture_uv_buffer = VK_NULL_HANDLE;
+        VkDeviceMemory texture_uv_buffer_memory = VK_NULL_HANDLE;
 };
 
 
@@ -74,9 +72,7 @@ template <typename T> static T load_vulkan_function(VkInstance instance, const c
 
 //TODO: this needs to be completly refactored so that the models and textures can be packed together and rendered using minimal graphics pipelines.
 struct Render_Context {
-
-        GLFWwindow * window;
-
+        GLFWwindow * window = nullptr;
         std::pmr::polymorphic_allocator<u8> allocator;
         VkAllocationCallbacks *vulkan_allocator = nullptr;
         VkInstance instance = VK_NULL_HANDLE;
@@ -186,67 +182,67 @@ struct Render_Context {
                 //TODO:
         }ui;
 
-        PFN_vkDestroySwapchainKHR vkDestroySwapchainKHR                 = nullptr;
-        PFN_vkGetDeviceQueue vkGetDeviceQueue                           = nullptr;
-        PFN_vkDestroyBuffer vkDestroyBuffer                             = nullptr;
-        PFN_vkFreeMemory vkFreeMemory                                   = nullptr;
-        PFN_vkCreateSampler vkCreateSampler                             = nullptr;
-        PFN_vkCreateSwapchainKHR vkCreateSwapchainKHR                   = nullptr;
-        PFN_vkGetSwapchainImagesKHR vkGetSwapchainImagesKHR             = nullptr;
-        PFN_vkCreateImageView vkCreateImageView                         = nullptr;
-        PFN_vkCreateShaderModule vkCreateShaderModule                   = nullptr;
-        PFN_vkCreateDescriptorPool vkCreateDescriptorPool               = nullptr;
-        PFN_vkCreateDescriptorSetLayout vkCreateDescriptorSetLayout     = nullptr;
-        PFN_vkCreatePipelineLayout vkCreatePipelineLayout               = nullptr;
-        PFN_vkCreateGraphicsPipelines vkCreateGraphicsPipelines         = nullptr;
-        PFN_vkCreateRenderPass vkCreateRenderPass                       = nullptr;
-        PFN_vkCreateImage vkCreateImage                                 = nullptr;
-        PFN_vkBindBufferMemory vkBindBufferMemory                       = nullptr;
-        PFN_vkGetBufferMemoryRequirements vkGetBufferMemoryRequirements = nullptr;
-        PFN_vkGetImageMemoryRequirements vkGetImageMemoryRequirements   = nullptr;
-        PFN_vkAllocateDescriptorSets vkAllocateDescriptorSets           = nullptr;
-        PFN_vkUpdateDescriptorSets vkUpdateDescriptorSets               = nullptr;
-        PFN_vkAllocateCommandBuffers vkAllocateCommandBuffers           = nullptr;
-        PFN_vkFreeCommandBuffers vkFreeCommandBuffers                   = nullptr;
-        PFN_vkBeginCommandBuffer vkBeginCommandBuffer                   = nullptr;
-        PFN_vkEndCommandBuffer vkEndCommandBuffer                       = nullptr;
-        PFN_vkCmdCopyBuffer vkCmdCopyBuffer                             = nullptr;
-        PFN_vkCmdPipelineBarrier vkCmdPipelineBarrier                   = nullptr;
-        PFN_vkCmdCopyBufferToImage vkCmdCopyBufferToImage               = nullptr;
-        PFN_vkCmdBeginRenderPass vkCmdBeginRenderPass                   = nullptr;
-        PFN_vkCmdEndRenderPass vkCmdEndRenderPass                       = nullptr;
-        PFN_vkCmdSetScissor vkCmdSetScissor                             = nullptr;
-        PFN_vkCmdSetViewport vkCmdSetViewport                           = nullptr;
-        PFN_vkCmdBindPipeline vkCmdBindPipeline                         = nullptr;
-        PFN_vkCmdBindDescriptorSets vkCmdBindDescriptorSets             = nullptr;
-        PFN_vkCmdPushConstants vkCmdPushConstants                       = nullptr;
-        PFN_vkCmdDispatch vkCmdDispatch                                 = nullptr;
-        PFN_vkCmdBindVertexBuffers vkCmdBindVertexBuffers               = nullptr;
-        PFN_vkCmdBindIndexBuffer vkCmdBindIndexBuffer                   = nullptr;
-        PFN_vkCmdDraw vkCmdDraw                                         = nullptr;
-        PFN_vkCmdDrawIndexed vkCmdDrawIndexed                           = nullptr;
-        PFN_vkQueueSubmit vkQueueSubmit                                 = nullptr;
-        PFN_vkDeviceWaitIdle vkDeviceWaitIdle                           = nullptr;
-        PFN_vkMapMemory vkMapMemory                                     = nullptr;
-        PFN_vkUnmapMemory vkUnmapMemory                                 = nullptr;
-        PFN_vkAllocateMemory vkAllocateMemory                           = nullptr;
-        PFN_vkBindImageMemory vkBindImageMemory                         = nullptr;
-        PFN_vkCreateFramebuffer vkCreateFramebuffer                     = nullptr;
-        PFN_vkCreateCommandPool vkCreateCommandPool                     = nullptr;
-        PFN_vkCreateBuffer vkCreateBuffer                               = nullptr;
-        PFN_vkCreateComputePipelines vkCreateComputePipelines           = nullptr;
-        PFN_vkCreateSemaphore vkCreateSemaphore                         = nullptr;
-        PFN_vkCreateFence vkCreateFence                                 = nullptr;
-        PFN_vkWaitForFences vkWaitForFences                             = nullptr;
-        PFN_vkResetFences vkResetFences                                 = nullptr;
-        PFN_vkDestroyFence vkDestroyFence                               = nullptr;
-        PFN_vkAcquireNextImageKHR vkAcquireNextImageKHR                 = nullptr;
-        PFN_vkQueuePresentKHR vkQueuePresentKHR                         = nullptr;
-        PFN_vkQueueWaitIdle vkQueueWaitIdle                             = nullptr;
-        PFN_vkDestroySemaphore vkDestroySemaphore                       = nullptr;
-        PFN_vkDestroyFramebuffer vkDestroyFramebuffer                   = nullptr;
-        PFN_vkDestroyImage vkDestroyImage                               = nullptr;
-        PFN_vkDestroyImageView vkDestroyImageView                       = nullptr;
+        PFN_vkDestroySwapchainKHR          vkDestroySwapchainKHR          =  nullptr;
+        PFN_vkGetDeviceQueue               vkGetDeviceQueue               =  nullptr;
+        PFN_vkDestroyBuffer                vkDestroyBuffer                =  nullptr;
+        PFN_vkFreeMemory                   vkFreeMemory                   =  nullptr;
+        PFN_vkCreateSampler                vkCreateSampler                =  nullptr;
+        PFN_vkCreateSwapchainKHR           vkCreateSwapchainKHR           =  nullptr;
+        PFN_vkGetSwapchainImagesKHR        vkGetSwapchainImagesKHR        =  nullptr;
+        PFN_vkCreateImageView              vkCreateImageView              =  nullptr;
+        PFN_vkCreateShaderModule           vkCreateShaderModule           =  nullptr;
+        PFN_vkCreateDescriptorPool         vkCreateDescriptorPool         =  nullptr;
+        PFN_vkCreateDescriptorSetLayout    vkCreateDescriptorSetLayout    =  nullptr;
+        PFN_vkCreatePipelineLayout         vkCreatePipelineLayout         =  nullptr;
+        PFN_vkCreateGraphicsPipelines      vkCreateGraphicsPipelines      =  nullptr;
+        PFN_vkCreateRenderPass             vkCreateRenderPass             =  nullptr;
+        PFN_vkCreateImage                  vkCreateImage                  =  nullptr;
+        PFN_vkBindBufferMemory             vkBindBufferMemory             =  nullptr;
+        PFN_vkGetBufferMemoryRequirements  vkGetBufferMemoryRequirements  =  nullptr;
+        PFN_vkGetImageMemoryRequirements   vkGetImageMemoryRequirements   =  nullptr;
+        PFN_vkAllocateDescriptorSets       vkAllocateDescriptorSets       =  nullptr;
+        PFN_vkUpdateDescriptorSets         vkUpdateDescriptorSets         =  nullptr;
+        PFN_vkAllocateCommandBuffers       vkAllocateCommandBuffers       =  nullptr;
+        PFN_vkFreeCommandBuffers           vkFreeCommandBuffers           =  nullptr;
+        PFN_vkBeginCommandBuffer           vkBeginCommandBuffer           =  nullptr;
+        PFN_vkEndCommandBuffer             vkEndCommandBuffer             =  nullptr;
+        PFN_vkCmdCopyBuffer                vkCmdCopyBuffer                =  nullptr;
+        PFN_vkCmdPipelineBarrier           vkCmdPipelineBarrier           =  nullptr;
+        PFN_vkCmdCopyBufferToImage         vkCmdCopyBufferToImage         =  nullptr;
+        PFN_vkCmdBeginRenderPass           vkCmdBeginRenderPass           =  nullptr;
+        PFN_vkCmdEndRenderPass             vkCmdEndRenderPass             =  nullptr;
+        PFN_vkCmdSetScissor                vkCmdSetScissor                =  nullptr;
+        PFN_vkCmdSetViewport               vkCmdSetViewport               =  nullptr;
+        PFN_vkCmdBindPipeline              vkCmdBindPipeline              =  nullptr;
+        PFN_vkCmdBindDescriptorSets        vkCmdBindDescriptorSets        =  nullptr;
+        PFN_vkCmdPushConstants             vkCmdPushConstants             =  nullptr;
+        PFN_vkCmdDispatch                  vkCmdDispatch                  =  nullptr;
+        PFN_vkCmdBindVertexBuffers         vkCmdBindVertexBuffers         =  nullptr;
+        PFN_vkCmdBindIndexBuffer           vkCmdBindIndexBuffer           =  nullptr;
+        PFN_vkCmdDraw                      vkCmdDraw                      =  nullptr;
+        PFN_vkCmdDrawIndexed               vkCmdDrawIndexed               =  nullptr;
+        PFN_vkQueueSubmit                  vkQueueSubmit                  =  nullptr;
+        PFN_vkDeviceWaitIdle               vkDeviceWaitIdle               =  nullptr;
+        PFN_vkMapMemory                    vkMapMemory                    =  nullptr;
+        PFN_vkUnmapMemory                  vkUnmapMemory                  =  nullptr;
+        PFN_vkAllocateMemory               vkAllocateMemory               =  nullptr;
+        PFN_vkBindImageMemory              vkBindImageMemory              =  nullptr;
+        PFN_vkCreateFramebuffer            vkCreateFramebuffer            =  nullptr;
+        PFN_vkCreateCommandPool            vkCreateCommandPool            =  nullptr;
+        PFN_vkCreateBuffer                 vkCreateBuffer                 =  nullptr;
+        PFN_vkCreateComputePipelines       vkCreateComputePipelines       =  nullptr;
+        PFN_vkCreateSemaphore              vkCreateSemaphore              =  nullptr;
+        PFN_vkCreateFence                  vkCreateFence                  =  nullptr;
+        PFN_vkWaitForFences                vkWaitForFences                =  nullptr;
+        PFN_vkResetFences                  vkResetFences                  =  nullptr;
+        PFN_vkDestroyFence                 vkDestroyFence                 =  nullptr;
+        PFN_vkAcquireNextImageKHR          vkAcquireNextImageKHR          =  nullptr;
+        PFN_vkQueuePresentKHR              vkQueuePresentKHR              =  nullptr;
+        PFN_vkQueueWaitIdle                vkQueueWaitIdle                =  nullptr;
+        PFN_vkDestroySemaphore             vkDestroySemaphore             =  nullptr;
+        PFN_vkDestroyFramebuffer           vkDestroyFramebuffer           =  nullptr;
+        PFN_vkDestroyImage                 vkDestroyImage                 =  nullptr;
+        PFN_vkDestroyImageView             vkDestroyImageView             =  nullptr;
 
         template <typename T> inline T load_instance_function(char const *name) const noexcept { 
                 return reinterpret_cast<T>(vkGetInstanceProcAddr(instance, name)); 

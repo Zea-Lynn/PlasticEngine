@@ -7,9 +7,6 @@
 [submodule "Vulkan-Headers"]
 	path = Vulkan-Headers
 	url = git@github.com:KhronosGroup/Vulkan-Headers.git
-[submodule "build/Vulkan-Utility-Libraries"]
-	path = build/Vulkan-Utility-Libraries
-	url = https://github.com/KhronosGroup/Vulkan-Utility-Libraries
 [submodule "Vulkan-Utility-Libraries"]
 	path = Vulkan-Utility-Libraries
 	url = https://github.com/KhronosGroup/Vulkan-Utility-Libraries
