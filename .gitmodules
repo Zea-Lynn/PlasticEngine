@@ -16,3 +16,6 @@
 [submodule "plastic-gltf"]
 	path = plastic-gltf
 	url = git@github.com:Zea-Lynn/plastic-gltf.git
+[submodule "plastic_asset_manager"]
+	path = plastic_asset_manager
+	url = git@github.com:Zea-Lynn/plastic_asset_manager.git
