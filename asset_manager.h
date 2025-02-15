@@ -30,12 +30,12 @@ typedef struct {
         cstr folder;
         uint64_t static_index;
         time_t last_updated;
-} pla_GLTF_asset;
+} pla_asset;
 
 typedef struct {
         cstr asset_folder;
         size_t assets_size;
-        pla_GLTF_asset * assets;
+        pla_asset * assets;
         size_t static_assets_size;
         pla_static_asset const * static_assets;
 } pla_asset_manager;
