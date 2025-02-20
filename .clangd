@@ -1,0 +1,8 @@
+CompileFlags:
+    Add: [-xc, -std=c99, -pedantic, -Wall, -Wextra, -fsanitize=address, -fsanitize=undefined, -DPLASTIC_GLTF_IMPLEMENTATION ]
+    Compiler: cc
+---
+If:
+    PathMatch: [.*\.cpp, .*\.hpp]
+CompileFlags:
+    Add: [-std=c++23, -pedantic, -Wall, -Wextra]

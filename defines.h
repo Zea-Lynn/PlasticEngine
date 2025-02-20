@@ -14,6 +14,8 @@ using u8 = uint8_t;
 using f64 = double;
 using f32 = float;
 
+typedef char const * cstr;
+
 enum class Key : u8 {
   none = 0,
   ctrl = 1,
