@@ -5,7 +5,8 @@
 #include "gui.cpp"
 
 #include "static_assets.h"
-#include "./plastic-gltf/plastic_gltf.h"
+#include "gltf.h"
+// #include "./plastic-gltf/plastic_gltf.h"
 
 int main() noexcept {
         #ifdef DEBUG
@@ -38,48 +39,53 @@ int main() noexcept {
         //         .free = [](auto user_data, auto ptr){free(ptr);}
         // };
 
-        size_t gltf_buffer_size = 0;
-        if(not pla_parse_GLTF(alien_size, alien_buffer, &gltf_buffer_size, nullptr, nullptr)){
-                puts("error parsing gltf, oopsie");
-                exit(420);
-        }
 
-        u8 * gltf_buffer = (u8 *)malloc(gltf_buffer_size);
-        pla_GLTF gltf; 
-        if(not pla_parse_GLTF(alien_size, alien_buffer, &gltf_buffer_size, gltf_buffer, &gltf)){
-                puts("error parsing gltf, oopsie");
-                exit(420);
-        }
-        size_t pos_byte_length = 0;
-        size_t pos_offset = 0;
-        size_t pos_count = 0; 
-        size_t pos_index_byte_length = 0;
-        size_t pos_index_offset = 0; 
-        size_t pos_index_count = 0;
-        size_t uv_offset = 0;
-        for(auto attribute_index = 0; attribute_index < gltf.meshes[0].primitives[0].attribute_count; ++attribute_index){
-                auto attribute = gltf.meshes->primitives->attributes[attribute_index];
-                if(attribute.name == pla_POSITION){
-                        auto position_view = gltf.buffer_views[gltf.accessors[attribute.accessor].buffer_view];
-                        pos_count = gltf.accessors[attribute.accessor].count;
-                        pos_byte_length = position_view.byte_length;
-                        pos_offset = position_view.byte_offset;
-                        auto index_view = gltf.buffer_views[gltf.accessors[gltf.meshes->primitives->indices].buffer_view];
-                        pos_index_byte_length = index_view.byte_length;
-                        pos_index_offset = index_view.byte_offset;
-                        pos_index_count = gltf.accessors[gltf.meshes->primitives->indices].count;
+        pla_GLTF_state gltf_state;
+        if(not pla_init_GLTF_state_from_glb(&gltf_state, alien_buffer)) exit(420);
+        if(not pla_parse_GLTF_glb(&gltf_state, (u8 *)malloc(gltf_state.buffer_size))) exit(420);
 
-                }
-                if(attribute.name == pla_TEXCOORD){
-                        uv_offset = gltf.buffer_views[gltf.accessors[attribute.accessor].buffer_view].byte_offset;
-                }
-        }
-        auto gltf_points = reinterpret_cast<glm::vec3 const *>(gltf.data + pos_offset);
-        auto gltf_texcoords = reinterpret_cast<glm::vec2 const *>(gltf.data + uv_offset);
-        auto gltf_indices = std::vector<u32>(pos_index_count);
-        for(auto pos_index_index = 0; pos_index_index < pos_index_count; ++pos_index_index){
-                gltf_indices[pos_index_index] = static_cast<u32>(reinterpret_cast<u16 const *>(gltf.data + pos_index_offset)[pos_index_index]);
-        }
+        // size_t gltf_buffer_size = 0;
+        // if(not pla_parse_GLTF(alien_size, alien_buffer, &gltf_buffer_size, nullptr, nullptr)){
+        //         puts("error parsing gltf, oopsie");
+        //         exit(420);
+        // }
+        //
+        // u8 * gltf_buffer = (u8 *)malloc(gltf_buffer_size);
+        // pla_GLTF gltf; 
+        // if(not pla_parse_GLTF(alien_size, alien_buffer, &gltf_buffer_size, gltf_buffer, &gltf)){
+        //         puts("error parsing gltf, oopsie");
+        //         exit(420);
+        // }
+        // size_t pos_byte_length = 0;
+        // size_t pos_offset = 0;
+        // size_t pos_count = 0; 
+        // size_t pos_index_byte_length = 0;
+        // size_t pos_index_offset = 0; 
+        // size_t pos_index_count = 0;
+        // size_t uv_offset = 0;
+        // for(auto attribute_index = 0; attribute_index < gltf.meshes[0].primitives[0].attribute_count; ++attribute_index){
+        //         auto attribute = gltf.meshes->primitives->attributes[attribute_index];
+        //         if(attribute.name == pla_POSITION){
+        //                 auto position_view = gltf.buffer_views[gltf.accessors[attribute.accessor].buffer_view];
+        //                 pos_count = gltf.accessors[attribute.accessor].count;
+        //                 pos_byte_length = position_view.byte_length;
+        //                 pos_offset = position_view.byte_offset;
+        //                 auto index_view = gltf.buffer_views[gltf.accessors[gltf.meshes->primitives->indices].buffer_view];
+        //                 pos_index_byte_length = index_view.byte_length;
+        //                 pos_index_offset = index_view.byte_offset;
+        //                 pos_index_count = gltf.accessors[gltf.meshes->primitives->indices].count;
+        //
+        //         }
+        //         if(attribute.name == pla_TEXCOORD){
+        //                 uv_offset = gltf.buffer_views[gltf.accessors[attribute.accessor].buffer_view].byte_offset;
+        //         }
+        // }
+        // auto gltf_points = reinterpret_cast<glm::vec3 const *>(gltf.data + pos_offset);
+        // auto gltf_texcoords = reinterpret_cast<glm::vec2 const *>(gltf.data + uv_offset);
+        // auto gltf_indices = std::vector<u32>(pos_index_count);
+        // for(auto pos_index_index = 0; pos_index_index < pos_index_count; ++pos_index_index){
+        //         gltf_indices[pos_index_index] = static_cast<u32>(reinterpret_cast<u16 const *>(gltf.data + pos_index_offset)[pos_index_index]);
+        // }
 
         const auto width = 512 * 2, height = 512 * 2;
 
