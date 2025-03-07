@@ -52,11 +52,12 @@ int pla_is_uncompressed_static_asset(cstr name, pla_asset_manager * manager);
 size_t pla_get_asset_size(cstr name, pla_asset_manager *);
 
 //returns 0 on fail
-int pla_load_asset(cstr name, pla_asset_manager * manager, size_t * buffer_size, uint8_t * buffer);
+int pla_load_asset(cstr name, pla_asset_manager * manager, size_t * buffer_size, uint8_t ** buffer);
 
 //returns 1 on change and updated the last_changed time in the manager.
 int pla_check_asset_changed(cstr name, pla_asset_manager *);
 
+#define PLASTIC_ASSET_MANAGER_IMPLEMENTATION
 #if defined(PLASTIC_ASSET_MANAGER_IMPLEMENTATION)
 #include<dirent.h>
 
@@ -106,7 +107,7 @@ size_t pla_calculate_asset_manager_memory_buffer_size(cstr asset_folder, size_t 
 int pla_initalize_asset_manager(cstr asset_folder, size_t static_assets_size, pla_static_asset const *static_assets, void * buffer, pla_asset_manager * out_manager){
         memset(out_manager, 0, sizeof(*out_manager));
         size_t current_asset = 0;
-        out_manager->assets = buffer;
+        out_manager->assets = (pla_asset *)buffer;
         if(asset_folder){
 
         }
@@ -165,7 +166,7 @@ size_t pla_get_asset_size(cstr name, pla_asset_manager * manager){
 size_t dict_space = UINT16_MAX;
 uint8_t dict_buffer[UINT16_MAX];
 
-int pla_load_asset(cstr name, pla_asset_manager * manager, size_t * buffer_size, uint8_t * buffer){
+int pla_load_asset(cstr name, pla_asset_manager * manager, size_t * buffer_size, uint8_t ** buffer){
         if(!manager) return 0;
         if(!buffer_size) return 0;
         size_t i = pla_get_asset_index(name, manager);
@@ -177,35 +178,10 @@ int pla_load_asset(cstr name, pla_asset_manager * manager, size_t * buffer_size,
         //TODO: compair recent versions of assets.
 
         if(static_asset.compression == pla_uncompressed){
-                // struct xz_buf buf;
-                // buf.in = static_asset.data;
-                // buf.in_pos = 0;
-                // buf.in_size = static_asset.data_size;
-                // buf.out = dict_buffer;
-                // buf.out_pos = 0;
-                // buf.out_size = UINT16_MAX;
-                // xz_crc32_init();
-                // xz_crc64_init();
-                // struct xz_dec * dec = xz_dec_init(XZ_DYNALLOC, UINT16_MAX);
-                // enum xz_ret ret;
-                // if(buffer){
-                //         ret = xz_dec_catrun(dec, &buf, 1);
-                // }else{
-                //         ret = xz_dec_catrun(dec, &buf, 1);
-                //         *buffer_size = buf.out_size;
-                //         return 1;
-                // }
-                // switch(ret){
-                // case XZ_OK: return 1;
-                // case XZ_STREAM_END: return 1;
-                // case XZ_UNSUPPORTED_CHECK:
-                // case XZ_MEM_ERROR:
-                // case XZ_MEMLIMIT_ERROR:
-                // case XZ_FORMAT_ERROR:
-                // case XZ_OPTIONS_ERROR:
-                // case XZ_DATA_ERROR:
-                // case XZ_BUF_ERROR: return 0;
-                // }
+                *buffer_size = static_asset.data_size;
+                if(!buffer) return 0;
+                //cast away const because it makes the api nicer to deal with.
+                *buffer = (uint8_t *)static_asset.data;
         }else{
 
         }

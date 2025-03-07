@@ -5,6 +5,7 @@
 #include "gui.cpp"
 
 #include "static_assets.h"
+#define PLASTIC_GLTF_IMPLEMENTATION
 #include "gltf.h"
 // #include "./plastic-gltf/plastic_gltf.h"
 
@@ -18,17 +19,18 @@ int main() noexcept {
                 exit(123);
         }
 
-        auto asset_buffer_size = pla_calculate_asset_manager_memory_buffer_size(nullptr, 1, static_assets);
+        auto asset_buffer_size = pla_calculate_asset_manager_memory_buffer_size(nullptr, static_assets_size, static_assets);
         auto buffer = malloc(asset_buffer_size);
         pla_asset_manager asset_manager;
-        if(!pla_initalize_asset_manager(nullptr, 1, static_assets, buffer, &asset_manager)){
+        if(!pla_initalize_asset_manager(nullptr, static_assets_size, static_assets, buffer, &asset_manager)){
                 exit(133);
         }
 
+
         size_t alien_size = pla_get_asset_size("ayyylmao", &asset_manager);
         if(alien_size == SIZE_MAX) exit(123);
-        auto alien_buffer = (uint8_t *)malloc(alien_size);
-        if(pla_load_asset("ayyylmao", &asset_manager, &alien_size, alien_buffer)){
+        uint8_t * alien_buffer = NULL;
+        if(pla_load_asset("ayyylmao", &asset_manager, &alien_size, &alien_buffer)){
 
         }
 
@@ -56,13 +58,13 @@ int main() noexcept {
         //         puts("error parsing gltf, oopsie");
         //         exit(420);
         // }
-        // size_t pos_byte_length = 0;
-        // size_t pos_offset = 0;
-        // size_t pos_count = 0; 
-        // size_t pos_index_byte_length = 0;
-        // size_t pos_index_offset = 0; 
-        // size_t pos_index_count = 0;
-        // size_t uv_offset = 0;
+        size_t pos_byte_length = 0;
+        size_t pos_offset = 0;
+        size_t pos_count = 0; 
+        size_t pos_index_byte_length = 0;
+        size_t pos_index_offset = 0; 
+        size_t pos_index_count = 0;
+        size_t uv_offset = 0;
         // for(auto attribute_index = 0; attribute_index < gltf.meshes[0].primitives[0].attribute_count; ++attribute_index){
         //         auto attribute = gltf.meshes->primitives->attributes[attribute_index];
         //         if(attribute.name == pla_POSITION){
@@ -80,9 +82,9 @@ int main() noexcept {
         //                 uv_offset = gltf.buffer_views[gltf.accessors[attribute.accessor].buffer_view].byte_offset;
         //         }
         // }
-        // auto gltf_points = reinterpret_cast<glm::vec3 const *>(gltf.data + pos_offset);
-        // auto gltf_texcoords = reinterpret_cast<glm::vec2 const *>(gltf.data + uv_offset);
-        // auto gltf_indices = std::vector<u32>(pos_index_count);
+        auto gltf_points = reinterpret_cast<glm::vec3 const *>(NULL /* gltf_state.data + pos_offset */);
+        auto gltf_texcoords = reinterpret_cast<glm::vec2 const *>(NULL/* gltf.data + uv_offset */);
+        auto gltf_indices = std::vector<u32>(0 /* pos_index_count */);
         // for(auto pos_index_index = 0; pos_index_index < pos_index_count; ++pos_index_index){
         //         gltf_indices[pos_index_index] = static_cast<u32>(reinterpret_cast<u16 const *>(gltf.data + pos_index_offset)[pos_index_index]);
         // }

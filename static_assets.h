@@ -1057,3 +1057,5 @@ pla_static_asset static_assets[] = {
 	{.name = "ayyylmao_xz", .last_updated = 0, .data_size = ayyylmao_xz_size, .data = (uint8_t const *)ayyylmao_xz, .compression = pla_xz},
 	{.name = "ayyylmao", .last_updated = 0, .data_size = ayyylmao_size, .data = (uint8_t const *)ayyylmao, .compression = pla_uncompressed},
 };
+size_t static_assets_size = sizeof(static_assets)/sizeof(*static_assets);
+

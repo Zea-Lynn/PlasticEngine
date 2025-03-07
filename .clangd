@@ -1,8 +1,11 @@
+If:
+    PathMatch: [.*\.c, .*\.h]
 CompileFlags:
-    Add: [-xc, -std=c99, -pedantic, -Wall, -Wextra, -fsanitize=address, -fsanitize=undefined, -DPLASTIC_GLTF_IMPLEMENTATION ]
+    Add: [-xc, -std=c99, -pedantic, -Wall, -Wextra, -fsanitize=address, -fsanitize=undefined, -DPLASTIC_GLTF_IMPLEMENTATION -DPLASTIC_ASSET_MANAGER_IMPLEMENTATION ]
     Compiler: cc
 ---
 If:
     PathMatch: [.*\.cpp, .*\.hpp]
 CompileFlags:
     Add: [-std=c++23, -pedantic, -Wall, -Wextra]
+    Compiler: clang++
