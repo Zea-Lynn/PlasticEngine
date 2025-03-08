@@ -29,7 +29,7 @@ add_subdirectory("Vulkan-Headers")
 add_subdirectory("Vulkan-Utility-Libraries")
 
 add_executable(plastic)
-target_link_options(plastic PRIVATE -fuse-ld=mold)
+# target_link_options(plastic PRIVATE -fuse-ld=mold)
 target_precompile_headers(plastic PUBLIC includes.h)
 target_sources(plastic PRIVATE main.cpp)
 
