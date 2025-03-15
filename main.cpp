@@ -46,18 +46,13 @@ int main() noexcept {
         if(not pla_init_GLTF_state_from_glb(&gltf_state, alien_buffer)) exit(420);
         if(not pla_parse_GLTF_glb(&gltf_state, (u8 *)malloc(gltf_state.buffer_size))) exit(420);
 
-        // size_t gltf_buffer_size = 0;
-        // if(not pla_parse_GLTF(alien_size, alien_buffer, &gltf_buffer_size, nullptr, nullptr)){
-        //         puts("error parsing gltf, oopsie");
-        //         exit(420);
-        // }
-        //
-        // u8 * gltf_buffer = (u8 *)malloc(gltf_buffer_size);
-        // pla_GLTF gltf; 
-        // if(not pla_parse_GLTF(alien_size, alien_buffer, &gltf_buffer_size, gltf_buffer, &gltf)){
-        //         puts("error parsing gltf, oopsie");
-        //         exit(420);
-        // }
+        uint32_t mesh_count = gltf_state.gltf->meshes.size;
+        pla_GLTF_mesh * meshes = (pla_GLTF_mesh *)(gltf_state.gltf->meshes.offset + (uint8_t *)gltf_state.buffer);
+        for(uint32_t i = 0; i < mesh_count; ++i){
+                char * mesh_name = meshes[i].name.offset + (char*)gltf_state.buffer;
+                puts(mesh_name);
+        }
+
         size_t pos_byte_length = 0;
         size_t pos_offset = 0;
         size_t pos_count = 0; 
