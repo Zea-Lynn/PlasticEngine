@@ -92,24 +92,27 @@ typedef struct {
         uint8_t child_count;
 } pla_GLTF_node;
 
-typedef enum {
-        pla_POSITION,
-        pla_NORMAL,
-        pla_TANGENT,
+#define PLA_GLTF_MESH_PRIMITIVE_ATTRIBUTES\
+        X(POSITION)\
+        X(NORMAL)\
+        X(TANGENT)\
+        /* Require set index. */\
+        X(TEXCOORD)\
+        X(COLOR)\
+        X(JOINTS)\
+        X(WEIGHTS)
 
-        //Require set index.
-        pla_TEXCOORD,
-        pla_COLOR,
-        pla_JOINTS,
-        pla_WEIGHTS,
-} pla_GLTF_mesh_primitive_attribute_name;
+typedef enum {
+        #define X(type) pla_GLTF_##type,
+        PLA_GLTF_MESH_PRIMITIVE_ATTRIBUTES
+        #undef X
+} pla_GLTF_mesh_primitive_attribute_type;
 
 typedef struct {
         uint32_t accessor;
-        pla_GLTF_mesh_primitive_attribute_name name;
+        pla_GLTF_mesh_primitive_attribute_type type;
         int8_t set_index;
 } pla_GLTF_mesh_primitive_attribute;
-
 
 typedef struct {
         // uint8_t attribute_count;
@@ -650,17 +653,58 @@ void pla__parse_nodes(pla__parse_state * p, pla_GLTF_state * state, pla_GLTF_nod
         p->offset = SIZE_MAX;
 }
 
-void pla__parse_mesh_primitive_attribute(pla__parse_state * p, pla_GLTF_state * state, pla_GLTF_mesh_primitive_attribute * attribute){
-        pla__parse_through(p);
+void pla__parse_mesh_primitive_attributes(pla__parse_state * p, pla_GLTF_state * state, pla_GLTF_mesh_primitive * primitive){
+        pla__eat_symbol(p, '{');
+        pla_GLTF_mesh_primitive_attribute * array = NULL;
+        uint32_t count = 0;
+        uint32_t * count_ptr = &count;
+        if(primitive){
+                primitive->attributes.offset = state->offsets.mesh_primitive_attributes + state->sizes.mesh_primitive_attributes * sizeof(pla_GLTF_mesh_primitive_attribute);
+                count_ptr = &primitive->attributes.size;
+                array = pla__calculate_buffer_ptr(pla_GLTF_mesh_primitive_attribute, mesh_primitive_attributes) + state->sizes.mesh_primitive_attributes;
+        }
+        PLA__LOOP(i, 69){
+                PLA__PARSE_KEY
+                pla_str attribute_name = {0};
+                int8_t set = 0;
+                PLA__LOOP(c, key.size){
+                        if(key.data[c] == '_'){
+                                attribute_name.data = key.data;
+                                attribute_name.size = c;
+                                pla_str set_str = {.size = key.size - c, .data = key.data + c};
+                                int64_t value = 0;
+                                pla_str_to_int64_t(set_str, &value);
+                                set = value;
+                                break;
+                        }
+                }
+                if(!attribute_name.data) attribute_name = key;
+                if(false);
+                #define X(type_name) \
+                else if(pla_str_is_equal(attribute_name, #type_name)) {\
+                        uint32_t * accessor = NULL;\
+                        if(primitive) {\
+                                (array + *count_ptr)->type = pla_GLTF_##type_name;\
+                                (array + *count_ptr)->set_index = set; \
+                                accessor = &(array + *count_ptr)->accessor;\
+                        }\
+                        pla__parse_uint32_t(p, accessor); \
+                        *count_ptr+=1;\
+                        state->sizes.mesh_primitive_attributes+=1;\
+                }
+                PLA_GLTF_MESH_PRIMITIVE_ATTRIBUTES
+                #undef X
+                PLA__CONTINUE_OR_END_OBJECT
+        }
+        p->offset = SIZE_MAX;
 }
 
 void pla__parse_mesh_primitive(pla__parse_state * p, pla_GLTF_state * state, pla_GLTF_mesh_primitive * primitive){
         pla__eat_symbol(p,  '{');
         PLA__LOOP(i, 4){
                 PLA__PARSE_KEY
-                if(pla_str_is_equal(key, "attributes")) {
-                        pla__parse_through(p);
-                } else if(pla_str_is_equal(key, "indices")) pla__parse_uint32_value(primitive, indices);
+                if(pla_str_is_equal(key, "attributes")) pla__parse_mesh_primitive_attributes(p, state, primitive);
+                else if(pla_str_is_equal(key, "indices")) pla__parse_uint32_value(primitive, indices);
                 else if(pla_str_is_equal(key, "material")) pla__parse_uint32_value(primitive, material);
                 else if(pla_str_is_equal(key, "mode")) pla__parse_uint32_value(primitive, mode);
                 else pla__parse_through(p);
