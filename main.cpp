@@ -5,6 +5,7 @@
 #include "gui.cpp"
 
 #include "static_assets.h"
+#define PLA_EXPORT static
 #define PLASTIC_GLTF_IMPLEMENTATION
 #include "gltf.h"
 // #include "./plastic-gltf/plastic_gltf.h"
@@ -27,31 +28,13 @@ int main() noexcept {
         }
 
 
-        size_t alien_size = pla_get_asset_size("ayyylmao", &asset_manager);
+        size_t alien_size = pla_get_asset_size("cube", &asset_manager);
         if(alien_size == SIZE_MAX) exit(123);
-        uint8_t * alien_buffer = NULL;
-        if(pla_load_asset("ayyylmao", &asset_manager, &alien_size, &alien_buffer)){
+        uint8_t * gltf_thing_buffer = NULL;
+        if(pla_load_asset("cube", &asset_manager, &alien_size, &gltf_thing_buffer)){
 
         }
 
-        // // TODO: maybe figure out a better way.
-        // pla_allocator pla_allocator = {
-        //         .user_data = nullptr, 
-        //         .allocate = [](auto user_data, auto size){return malloc(size);}, 
-        //         .free = [](auto user_data, auto ptr){free(ptr);}
-        // };
-
-
-        pla_GLTF_state gltf_state;
-        if(not pla_init_GLTF_state_from_glb(&gltf_state, alien_buffer)) exit(420);
-        if(not pla_parse_GLTF_glb(&gltf_state, (u8 *)malloc(gltf_state.buffer_size))) exit(420);
-
-        uint32_t mesh_count = gltf_state.gltf->meshes.size;
-        pla_GLTF_mesh * meshes = (pla_GLTF_mesh *)(gltf_state.gltf->meshes.offset + (uint8_t *)gltf_state.buffer);
-        for(uint32_t i = 0; i < mesh_count; ++i){
-                char * mesh_name = meshes[i].name.offset + (char*)gltf_state.buffer;
-                puts(mesh_name);
-        }
 
         size_t pos_byte_length = 0;
         size_t pos_offset = 0;
@@ -60,29 +43,42 @@ int main() noexcept {
         size_t pos_index_offset = 0; 
         size_t pos_index_count = 0;
         size_t uv_offset = 0;
-        // for(auto attribute_index = 0; attribute_index < gltf.meshes[0].primitives[0].attribute_count; ++attribute_index){
-        //         auto attribute = gltf.meshes->primitives->attributes[attribute_index];
-        //         if(attribute.name == pla_POSITION){
-        //                 auto position_view = gltf.buffer_views[gltf.accessors[attribute.accessor].buffer_view];
-        //                 pos_count = gltf.accessors[attribute.accessor].count;
-        //                 pos_byte_length = position_view.byte_length;
-        //                 pos_offset = position_view.byte_offset;
-        //                 auto index_view = gltf.buffer_views[gltf.accessors[gltf.meshes->primitives->indices].buffer_view];
-        //                 pos_index_byte_length = index_view.byte_length;
-        //                 pos_index_offset = index_view.byte_offset;
-        //                 pos_index_count = gltf.accessors[gltf.meshes->primitives->indices].count;
-        //
-        //         }
-        //         if(attribute.name == pla_TEXCOORD){
-        //                 uv_offset = gltf.buffer_views[gltf.accessors[attribute.accessor].buffer_view].byte_offset;
-        //         }
-        // }
-        auto gltf_points = reinterpret_cast<glm::vec3 const *>(NULL /* gltf_state.data + pos_offset */);
-        auto gltf_texcoords = reinterpret_cast<glm::vec2 const *>(NULL/* gltf.data + uv_offset */);
-        auto gltf_indices = std::vector<u32>(0 /* pos_index_count */);
-        // for(auto pos_index_index = 0; pos_index_index < pos_index_count; ++pos_index_index){
-        //         gltf_indices[pos_index_index] = static_cast<u32>(reinterpret_cast<u16 const *>(gltf.data + pos_index_offset)[pos_index_index]);
-        // }
+        pla_GLTF_state gltf_state;
+        {
+                if(not pla_init_GLTF_state_from_glb(&gltf_state, gltf_thing_buffer)) exit(420);
+                if(not pla_parse_GLTF_glb(&gltf_state, (u8 *)malloc(gltf_state.buffer_size))) exit(420);
+
+                uint32_t mesh_count = gltf_state.gltf->meshes.size;
+                auto meshes = (pla_GLTF_mesh *)(gltf_state.gltf->meshes.offset + (uint8_t *)gltf_state.buffer);
+                auto accessors = (pla_GLTF_accessor *)(gltf_state.gltf->accessors.offset + (uint8_t *)gltf_state.buffer);
+                auto buffer_views = (pla_GLTF_buffer_view *)(gltf_state.gltf->buffer_views.offset + (uint8_t *)gltf_state.buffer);
+                for(uint32_t m = 0; m < mesh_count; ++m){
+                        char * mesh_name = meshes[m].name.offset + (char*)gltf_state.buffer;
+                        puts(mesh_name);
+                        auto primitives = (pla_GLTF_mesh_primitive *)(meshes[m].primitives.offset + (uint8_t *)gltf_state.buffer);
+                        for(uint32_t p = 0; p < meshes[m].primitives.size; ++p){
+                                auto attributes = (pla_GLTF_mesh_primitive_attribute *)(primitives[p].attributes.offset + (uint8_t *)gltf_state.buffer);
+                                for(uint32_t a = 0; a < primitives[p].attributes.size; ++a){
+                                        if(attributes[a].type == pla_GLTF_POSITION){
+                                                auto pos_accessor = accessors[attributes[a].accessor];
+                                                pos_count = pos_accessor.count;
+                                                pos_offset = buffer_views[pos_accessor.buffer_view].byte_offset;
+
+                                                auto pos_index_accessor = accessors[primitives[p].indices];
+                                                pos_index_offset = buffer_views[pos_index_accessor.buffer_view].byte_offset;
+                                                pos_index_byte_length = buffer_views[pos_index_accessor.buffer_view].byte_length;
+                                                pos_index_count = pos_index_accessor.count;
+                                        }else if(attributes[a].type == pla_GLTF_TEXCOORD){
+                                                uv_offset = buffer_views[accessors[attributes[a].accessor].buffer_view].byte_offset;
+                                        }
+                                }
+                        }
+                }
+        }
+
+        auto gltf_points = reinterpret_cast<glm::vec3 const *>(gltf_state.data + pos_offset);
+        auto gltf_texcoords = reinterpret_cast<glm::vec2 const *>(gltf_state.data + uv_offset);
+        auto gltf_indices = std::vector<u32>((u16 *)(gltf_state.data + pos_index_offset), (u16 *)(gltf_state.data + pos_index_offset + pos_index_byte_length));
 
         const auto width = 512 * 2, height = 512 * 2;
 
@@ -111,7 +107,7 @@ int main() noexcept {
                 auto uvs = std::vector<glm::vec2>{{-1,-1}, {1,-1}, {-1,1}, {1,1}};
                 renderer.terrain_mesh = renderer.load_static_mesh32(points, 4, indices, 6, uvs.data());
                 int x, y, comp;
-                auto texture = stbi_load("./sometexture.png",&x, &y, nullptr, STBI_rgb_alpha);
+                auto texture = stbi_load("sometexture.png",&x, &y, nullptr, STBI_rgb_alpha);
                 if(texture == nullptr){
                         puts("unable to load texture");
                         exit(420);

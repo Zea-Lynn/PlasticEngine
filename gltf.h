@@ -14,7 +14,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-
 #if defined(__cplusplus)
 extern "C" {
 #if !defined(PLA_NOEXCEPT)
@@ -31,14 +30,10 @@ extern "C" {
 
 //You can make this static if you are staticaly linking everything.
 #if !defined(PLA_EXPORT)
-#if defined(PLASTIC_GLTF_IMPLEMENTATION)
-#define PLA_EXPORT static
-#else
-#define PLA_EXPORT extern
-#endif /* PLASTIC_GLTF_IMPLEMENTATION */
+#define PLA_EXPORT extern 
 #endif /* PLA_EXPORT */
 
-typedef size_t pla_offset;
+typedef uint32_t pla_offset;
 
 typedef struct {
         size_t size;
@@ -82,14 +77,13 @@ typedef struct {
         uint32_t mesh;
         uint32_t skin;
         //TODO: figure out what to do for this. maybe an arena at the base of gltf object, then this could be an offset. or maybe a union or something.
-        union{
-                float translation[3];
-                float rotation[4];
-                float scale[3];
-        } transform;
         // uint32_t *children;
         pla_offset_array children;
         uint8_t child_count;
+
+        float translation[3];
+        float rotation[4];
+        float scale[3];
 } pla_GLTF_node;
 
 #define PLA_GLTF_MESH_PRIMITIVE_ATTRIBUTES\
@@ -106,6 +100,7 @@ typedef enum {
         #define X(type) pla_GLTF_##type,
         PLA_GLTF_MESH_PRIMITIVE_ATTRIBUTES
         #undef X
+        pla_GLTF_mesh_primitive_attribute_type_MAX_ENUM
 } pla_GLTF_mesh_primitive_attribute_type;
 
 typedef struct {
@@ -168,7 +163,6 @@ uint8_t const pla_GLTF_type_component_count[8] = {1,2,3,4,4,9,16};
 X(pla_GLTF_component_type,  "componentType",  component_type,  parse_component_type)\
 X(pla_GLTF_type,            "type",           type,            parse_gltf_type)\
 X(uint32_t,                 "bufferView",     buffer_view,     parse_uint32_t)\
-X(uint32_t,                 "byteOffset",     byte_offset,     parse_uint32_t)\
 X(pla_offset_array,         "min",            min_values,      parse_min_or_max)\
 X(pla_offset_array,         "max",            max_values,      parse_min_or_max)\
 X(uint32_t,                 "count",          count,           parse_uint32_t)
@@ -179,12 +173,18 @@ PLA_ACCESSOR_COMPONENTS
 #undef X
 } pla_GLTF_accessor;
 
+
+typedef enum{
+        pla_GLTF_ARRAY_BUFFER = 34962,
+        pla_GLTF_ELEMENT_ARRAY_BUFFER = 34963
+}pla_GLTF_buffer_view_target;
+
 #define BUFFER_VIEW_COMPONENTS \
-X(uint32_t,  "buffer",      buffer,       parse_uint32_t)\
-X(uint32_t,  "byteLength",  byte_length,  parse_uint32_t)\
-X(uint32_t,  "byteOffset",  byte_offset,  parse_uint32_t)\
-X(uint32_t,  "byteStride",  byte_stride,  parse_uint32_t)\
-X(uint32_t,  "target",      target,       parse_uint32_t)
+X(uint32_t,                     "buffer",      buffer,       parse_uint32_t)\
+X(uint32_t,                     "byteLength",  byte_length,  parse_uint32_t)\
+X(uint32_t,                     "byteOffset",  byte_offset,  parse_uint32_t)\
+X(uint32_t,                     "byteStride",  byte_stride,  parse_uint32_t)\
+X(pla_GLTF_buffer_view_target,  "target",      target,       parse_uint32_t)
 
 typedef struct {
 #define X(type, _, prop, __) type prop;
@@ -193,8 +193,8 @@ BUFFER_VIEW_COMPONENTS
 } pla_GLTF_buffer_view;
 
 typedef struct {
-        pla_str uri;
-        size_t byte_length;
+        pla_offset_str uri;
+        uint32_t byte_length;
 } pla_GLTF_buffer;
 
 typedef struct {
@@ -216,13 +216,13 @@ typedef struct {
 
 
 #define ROOT_ARRAYS \
-        X(scenes, pla_GLTF_scene, "scenes")\
-        X(nodes, pla_GLTF_node, "nodes")\
+        /* X(scenes, pla_GLTF_scene, "scenes") */\
+        /* X(nodes, pla_GLTF_node, "nodes") */\
         X(meshes, pla_GLTF_mesh, "meshes")\
         X(accessors, pla_GLTF_accessor, "accessors")\
         X(buffer_views, pla_GLTF_buffer_view, "bufferViews")\
-        X(buffers, pla_GLTF_buffer, "buffers")\
-        X(animations, pla_GLTF_animation, "animations")\
+        /* X(buffers, pla_GLTF_buffer, "buffers") */\
+        /* X(animations, pla_GLTF_animation, "animations") */\
 
 typedef struct{
         #define X(prop, ...) uint32_t prop;
@@ -235,7 +235,6 @@ typedef struct{
         //when parsing it just dumps the values into the buffer so this needs to be keept track of with offsets in mind.
         uint32_t components[pla_GLTF_component_type_MAX_ENUM];
         uint32_t string_bytes;
-        uint32_t indices;
 } pla_GLTF_sizes;
 
 typedef struct{
@@ -506,37 +505,96 @@ void pla__parse_float_in_array(pla__parse_state * p,  pla_GLTF_state * _, float 
         pla__parse_float(p, out_float);
 }
 
-void pla__parse_int8_t(pla__parse_state * p, int8_t * out_int){pla__parse_int64_t(p, (int64_t *)out_int);}
+void pla__parse_int8_t(pla__parse_state * p, int8_t * out_int){
+        if(out_int){
+                int64_t larger_int = 0;
+                pla__parse_int64_t(p, &larger_int);
+                *out_int = (int8_t)larger_int;
+        } else pla__parse_int64_t(p, NULL);
+}
 void pla__parse_int8_t_in_array(pla__parse_state * p,  pla_GLTF_state * _, int8_t * out_int){ (void)_; pla__parse_int8_t(p, out_int); }
-void pla__parse_uint8_t(pla__parse_state * p, uint8_t * out_int){pla__parse_int64_t(p, (int64_t *)out_int);}
+void pla__parse_uint8_t(pla__parse_state * p, uint8_t * out_int){
+        if(out_int){
+                int64_t larger_int = 0;
+                pla__parse_int64_t(p, &larger_int);
+                *out_int = (uint8_t)larger_int;
+        } else pla__parse_int64_t(p, NULL);
+}
 void pla__parse_uint8_t_in_array(pla__parse_state * p,  pla_GLTF_state * _, uint8_t * out_int){ (void)_; pla__parse_uint8_t(p, out_int); }
-void pla__parse_int16_t(pla__parse_state * p, int16_t * out_int){pla__parse_int64_t(p, (int64_t *)out_int);}
+void pla__parse_int16_t(pla__parse_state * p, int16_t * out_int){
+        if(out_int){
+                int64_t larger_int = 0;
+                pla__parse_int64_t(p, &larger_int);
+                *out_int = (int16_t)larger_int;
+        } else pla__parse_int64_t(p, NULL);
+}
 void pla__parse_int16_t_in_array(pla__parse_state * p,  pla_GLTF_state * _, int16_t * out_int){ (void)_; pla__parse_int16_t(p, out_int); }
-void pla__parse_uint16_t(pla__parse_state * p, uint16_t * out_int){pla__parse_int64_t(p, (int64_t *)out_int);}
+void pla__parse_uint16_t(pla__parse_state * p, uint16_t * out_int){
+        if(out_int){
+                int64_t larger_int = 0;
+                pla__parse_int64_t(p, &larger_int);
+                *out_int = (uint16_t)larger_int;
+        } else pla__parse_int64_t(p, NULL);
+}
 void pla__parse_uint16_t_in_array(pla__parse_state * p,  pla_GLTF_state * _, uint16_t * out_int){ (void)_; pla__parse_uint16_t(p, out_int); }
-void pla__parse_int32_t(pla__parse_state * p, int32_t * out_int){pla__parse_int64_t(p, (int64_t *)out_int);}
+void pla__parse_int32_t(pla__parse_state * p, int32_t * out_int){
+        if(out_int){
+                int64_t larger_int = 0;
+                pla__parse_int64_t(p, &larger_int);
+                *out_int = (int32_t)larger_int;
+        } else pla__parse_int64_t(p, NULL);
+}
 void pla__parse_int32_t_in_array(pla__parse_state * p,  pla_GLTF_state * _, int32_t * out_int){ (void)_; pla__parse_int32_t(p, out_int); }
-void pla__parse_uint32_t(pla__parse_state * p, uint32_t * out_int){pla__parse_int64_t(p, (int64_t *)out_int);}
+void pla__parse_uint32_t(pla__parse_state * p, uint32_t * out_int){
+        if(out_int){
+                int64_t larger_int = 0;
+                pla__parse_int64_t(p, &larger_int);
+                *out_int = (uint32_t)larger_int;
+        } else pla__parse_int64_t(p, NULL);
+}
 void pla__parse_uint32_t_in_array(pla__parse_state * p,  pla_GLTF_state * _, uint32_t * out_int){ (void)_; pla__parse_uint32_t(p, out_int); }
 
 #define PLA__PARSE_ARRAY(array, parser, rel_size, state_size) do{\
+        pla_offset size = 0;\
         pla__eat_symbol(p,  '[');\
         /*TODO: maybe search for an upper bound to this.*/\
-        for(uint32_t blargle = 0; blargle < UINT32_MAX; ++blargle){\
+        PLA__LOOP(i, UINT32_MAX){\
                 if(p->offset == SIZE_MAX) return;\
-                parser(p, state, array ? array + *rel_size : array);\
+                if(array) parser(p, state, array + size);\
+                else parser(p, state,  array);\
                 if(p->data[p->offset] == ','){\
                         pla__eat_symbol(p,  ',');\
-                        ++*rel_size;\
-                        ++state->sizes.state_size;\
+                        size += 1;\
+                        state->sizes.state_size += 1;\
                 }else if(p->data[p->offset] == ']'){\
                         pla__eat_symbol(p,  ']');\
-                        ++*rel_size;\
-                        ++state->sizes.state_size;\
+                        size += 1;\
+                        state->sizes.state_size += 1;\
                         break;\
                 }\
         }\
-}while(0);
+        if(array) {\
+                if(state->sizes.state_size > state->pre_parse_sizes.state_size){\
+                        p->offset = SIZE_MAX;\
+                        return;\
+                }\
+                *rel_size = size;\
+        }\
+}while(0)
+
+#define PLA__PARSE_OFFSET_ARRAY(type, parent, array, state_size)do{\
+        type * values = NULL;\
+        uint32_t * rel_size = NULL;\
+        if(parent){\
+                parent->array = (pla_offset_array){\
+                    .size = 0,\
+                    .offset = state->offsets.state_size + (state->sizes.state_size * sizeof(type)),\
+                };\
+                values = (pla_GLTF_mesh_primitive *)((uint8_t *)state->buffer + parent->array.offset);\
+                rel_size = &parent->array.size;\
+        }\
+        PLA__PARSE_ARRAY(values, pla__parse_##state_size, rel_size, state_size);\
+}while(0)
 
 #define pla__parse_string_value(parent, prop)do{\
         pla_str val;\
@@ -592,14 +650,13 @@ void pla__parse_scenes(pla__parse_state * p, pla_GLTF_state * state, pla_GLTF_sc
                 if(pla_str_is_equal(key, "name")) pla__parse_string_value(scene, name);
                 else if(pla_str_is_equal(key, "nodes")){
                         uint32_t * nodes = NULL;
-                        uint32_t index;
-                        uint32_t * nodes_size = &index;
+                        uint32_t * nodes_size = NULL;
                         if(state->gltf){
-                                pla_GLTF_scene * scene = pla__from_buffer(state->gltf->scenes, pla_GLTF_scene) + state->gltf->scenes.size;
                                 scene->nodes = pla__create_offset_array(scene_nodes, *nodes);
+                                nodes = pla__from_buffer(scene->nodes, uint32_t);
                                 nodes_size = &scene->nodes.size;
                         }
-                        PLA__PARSE_ARRAY(nodes, pla__parse_uint32_t_in_array, nodes_size, scene_nodes)
+                        PLA__PARSE_ARRAY(nodes, pla__parse_uint32_t_in_array, nodes_size, scene_nodes);
                 }
                 else pla__parse_through(p);
                 PLA__CONTINUE_OR_END_OBJECT
@@ -616,36 +673,88 @@ void pla__parse_nodes(pla__parse_state * p, pla_GLTF_state * state, pla_GLTF_nod
                 else if(pla_str_is_equal(key, "skin")) pla__parse_uint32_value(node, skin);
                 else if(pla_str_is_equal(key, "rotation")){ 
                         float * values = NULL;
-                        uint32_t index;
+                        uint32_t index = 0;
                         uint32_t * values_size = &index;
-                        if(state->gltf){
-                                //TODO:
+                        if(node){
+                                values = node->rotation;
                         }
-                        PLA__PARSE_ARRAY(values, pla__parse_float_in_array, values_size, scene_nodes);
+                        pla__eat_symbol(p, '[');
+                        for (uint32_t blargle = 0; blargle < (UINT32_MAX); ++blargle) {
+                                if(p->offset == (SIZE_MAX)) return;
+                                if(*values_size > sizeof(node->rotation)/ sizeof(*node->rotation)){
+                                        p->offset = SIZE_MAX;
+                                        return;
+                                }
+                                if(values) pla__parse_float_in_array(p, state, values + *values_size);
+                                else pla__parse_float_in_array(p, state, values);
+                                if(p->data[p->offset] == ',') {
+                                        pla__eat_symbol(p, ',');
+                                        ++*values_size;
+                                } else if (p->data[p->offset] == ']') {
+                                        pla__eat_symbol(p, ']');
+                                        ++*values_size;
+                                        break;
+                                }
+                        }
                 } else if(pla_str_is_equal(key, "translation")){ 
                         float * values = NULL;
-                        uint32_t index;
+                        uint32_t index = 0;
                         uint32_t * values_size = &index;
-                        if(state->gltf){
-                                //TODO:
+                        if(node){
+                                values = node->translation;
                         }
-                        PLA__PARSE_ARRAY(values, pla__parse_float_in_array, values_size, scene_nodes);
+                        pla__eat_symbol(p, '[');
+                        for (uint32_t blargle = 0; blargle < (UINT32_MAX); ++blargle) {
+                                if(p->offset == (SIZE_MAX)) return;
+                                if(*values_size > sizeof(node->translation)/ sizeof(*node->translation)){
+                                        p->offset = SIZE_MAX;
+                                        return;
+                                }
+                                if(values) pla__parse_float_in_array(p, state, values + *values_size);
+                                else pla__parse_float_in_array(p, state, values);
+                                if(p->data[p->offset] == ',') {
+                                        pla__eat_symbol(p, ',');
+                                        ++*values_size;
+                                } else if (p->data[p->offset] == ']') {
+                                        pla__eat_symbol(p, ']');
+                                        ++*values_size;
+                                        break;
+                                }
+                        }
                 } else if(pla_str_is_equal(key, "scale")){ 
                         float * values = NULL;
-                        uint32_t index;
+                        uint32_t index = 0;
                         uint32_t * values_size = &index;
-                        if(state->gltf){
-                                //TODO:
+                        if(node){
+                                values = node->scale;
                         }
-                        PLA__PARSE_ARRAY(values, pla__parse_float_in_array, values_size, scene_nodes);
+                        pla__eat_symbol(p, '[');
+                        for (uint32_t blargle = 0; blargle < (UINT32_MAX); ++blargle) {
+                                if(p->offset == (SIZE_MAX)) return;
+                                if(*values_size > sizeof(node->scale)/ sizeof(*node->scale)){
+                                        p->offset = SIZE_MAX;
+                                        return;
+                                }
+                                if(values) pla__parse_float_in_array(p, state, values + *values_size);
+                                else pla__parse_float_in_array(p, state, values);
+                                if(p->data[p->offset] == ',') {
+                                        pla__eat_symbol(p, ',');
+                                        ++*values_size;
+                                } else if (p->data[p->offset] == ']') {
+                                        pla__eat_symbol(p, ']');
+                                        ++*values_size;
+                                        break;
+                                }
+                        }
                 } else if(pla_str_is_equal(key, "children")){ 
                         uint32_t * children = NULL;
                         uint32_t index;
                         uint32_t * values_size = &index;
                         if(state->gltf){
-                                //TODO:
+                                node->children = pla__create_offset_array(components[pla_GLTF_component_type_uint32_t], *children);
+                                children = pla__from_buffer(node->children, uint32_t);
                         }
-                        PLA__PARSE_ARRAY(children, pla__parse_uint32_t_in_array, values_size, scene_nodes);
+                        PLA__PARSE_ARRAY(children, pla__parse_uint32_t_in_array, values_size, components[pla_GLTF_component_type_uint32_t]);
                 }
                 else pla__parse_through(p);
                 PLA__CONTINUE_OR_END_OBJECT
@@ -656,13 +765,13 @@ void pla__parse_nodes(pla__parse_state * p, pla_GLTF_state * state, pla_GLTF_nod
 void pla__parse_mesh_primitive_attributes(pla__parse_state * p, pla_GLTF_state * state, pla_GLTF_mesh_primitive * primitive){
         pla__eat_symbol(p, '{');
         pla_GLTF_mesh_primitive_attribute * array = NULL;
-        uint32_t count = 0;
-        uint32_t * count_ptr = &count;
+        uint32_t * count_ptr = NULL;
         if(primitive){
                 primitive->attributes.offset = state->offsets.mesh_primitive_attributes + state->sizes.mesh_primitive_attributes * sizeof(pla_GLTF_mesh_primitive_attribute);
                 count_ptr = &primitive->attributes.size;
                 array = pla__calculate_buffer_ptr(pla_GLTF_mesh_primitive_attribute, mesh_primitive_attributes) + state->sizes.mesh_primitive_attributes;
         }
+        uint32_t count = 0;
         PLA__LOOP(i, 69){
                 PLA__PARSE_KEY
                 pla_str attribute_name = {0};
@@ -671,35 +780,52 @@ void pla__parse_mesh_primitive_attributes(pla__parse_state * p, pla_GLTF_state *
                         if(key.data[c] == '_'){
                                 attribute_name.data = key.data;
                                 attribute_name.size = c;
-                                pla_str set_str = {.size = key.size - c, .data = key.data + c};
+                                pla_str set_str = {.size = key.size - (c + 1), .data = key.data + c + 1};
                                 int64_t value = 0;
-                                pla_str_to_int64_t(set_str, &value);
+                                if(!pla_str_to_int64_t(set_str, &value)){
+                                        p->offset = SIZE_MAX;
+                                        return;
+                                }
                                 set = value;
                                 break;
                         }
                 }
                 if(!attribute_name.data) attribute_name = key;
-                if(false);
-                #define X(type_name) \
-                else if(pla_str_is_equal(attribute_name, #type_name)) {\
-                        uint32_t * accessor = NULL;\
-                        if(primitive) {\
-                                (array + *count_ptr)->type = pla_GLTF_##type_name;\
-                                (array + *count_ptr)->set_index = set; \
-                                accessor = &(array + *count_ptr)->accessor;\
-                        }\
-                        pla__parse_uint32_t(p, accessor); \
-                        *count_ptr+=1;\
-                        state->sizes.mesh_primitive_attributes+=1;\
+
+                static cstr const names[] = {
+                        #define X(type_name) #type_name,
+                        PLA_GLTF_MESH_PRIMITIVE_ATTRIBUTES
+                        #undef X
+                };
+
+                bool found_name = 0;
+                PLA__LOOP(name_index, pla_GLTF_mesh_primitive_attribute_type_MAX_ENUM){
+                        if(pla_str_is_equal(attribute_name, names[name_index])) {
+                                uint32_t * accessor = NULL;
+                                if(primitive) {
+                                        array[count].type = (pla_GLTF_mesh_primitive_attribute_type)name_index;
+                                        array[count].set_index = set; 
+                                        accessor = &array[count].accessor;
+                                }
+                                pla__parse_uint32_t(p, accessor); 
+                                found_name = 1;
+                                break;
+                        }
                 }
-                PLA_GLTF_MESH_PRIMITIVE_ATTRIBUTES
-                #undef X
+                if(!found_name){
+                        p->offset = SIZE_MAX;
+                        return;
+                }
+
+                if(count_ptr) ++*count_ptr;
+                count+=1;
+                state->sizes.mesh_primitive_attributes+=1;
                 PLA__CONTINUE_OR_END_OBJECT
         }
         p->offset = SIZE_MAX;
 }
 
-void pla__parse_mesh_primitive(pla__parse_state * p, pla_GLTF_state * state, pla_GLTF_mesh_primitive * primitive){
+void pla__parse_mesh_primitives(pla__parse_state * p, pla_GLTF_state * state, pla_GLTF_mesh_primitive * primitive){
         pla__eat_symbol(p,  '{');
         PLA__LOOP(i, 4){
                 PLA__PARSE_KEY
@@ -719,17 +845,7 @@ void pla__parse_meshes(pla__parse_state * p, pla_GLTF_state * state, pla_GLTF_me
         PLA__LOOP(i, 5){
                 PLA__PARSE_KEY
                 if(pla_str_is_equal(key, "name")) pla__parse_string_value(mesh, name);
-                else if(pla_str_is_equal(key, "primitives")){
-                        pla_GLTF_mesh_primitive * primitives = NULL;
-                        uint32_t index;
-                        uint32_t * primitives_size = &index;
-                        if(state->gltf){
-                                pla_GLTF_mesh * mesh = pla__from_buffer(state->gltf->meshes, pla_GLTF_mesh) + state->gltf->meshes.size;
-                                mesh->primitives = pla__create_offset_array(scene_nodes, *primitives);
-                                primitives_size = &mesh->primitives.size;
-                        }
-                        PLA__PARSE_ARRAY(primitives, pla__parse_mesh_primitive, primitives_size, scene_nodes)
-                }
+                else if(pla_str_is_equal(key, "primitives")) PLA__PARSE_OFFSET_ARRAY(pla_GLTF_mesh_primitive, mesh, primitives, mesh_primitives);
                 else pla__parse_through(p);
                 PLA__CONTINUE_OR_END_OBJECT
         }
@@ -827,7 +943,6 @@ void pla__parse_accessors(pla__parse_state * p, pla_GLTF_state * state, pla_GLTF
                                 p->offset = SIZE_MAX;
                                 return;
                         }
-                        //TODO as of March 14 2025: this doesn't look like it works when parsing floats of 1 digit.
                         pla__parse_state max_p = {.data = p->data, .size = p->size, .offset = max_offset,};
                         if(max_p.offset != SIZE_MAX){
                                 if(!pla__parse_accessor_min_max(0, &max_p, state, accessor, component_type) || p->offset == SIZE_MAX){
@@ -849,10 +964,38 @@ void pla__parse_accessors(pla__parse_state * p, pla_GLTF_state * state, pla_GLTF
         p->offset = SIZE_MAX;
 }
 void pla__parse_buffer_views(pla__parse_state * p, pla_GLTF_state * state, pla_GLTF_buffer_view * buffer_view){
-        pla__parse_through(p);
+        (void)state;
+        pla__eat_symbol(p,  '{');
+        if(p->offset == SIZE_MAX) return;
+        PLA__LOOP(i, 5){
+                PLA__PARSE_KEY
+                if(pla_str_is_equal(key, "buffer")) pla__parse_uint32_value(buffer_view, buffer);
+                else if(pla_str_is_equal(key, "byteLength")) pla__parse_uint32_value(buffer_view, byte_length);
+                else if(pla_str_is_equal(key, "byteOffset")) pla__parse_uint32_value(buffer_view, byte_offset);
+                else if(pla_str_is_equal(key, "byteStride")) pla__parse_uint32_value(buffer_view, byte_stride);
+                else if(pla_str_is_equal(key, "target")) {
+                        if(buffer_view){
+                                int64_t larger_int = 0;
+                                pla__parse_int64_t(p, &larger_int);
+                                buffer_view->target = (pla_GLTF_buffer_view_target)larger_int;
+                        } else pla__parse_int64_t(p, NULL);
+                } else pla__parse_through(p);
+                PLA__CONTINUE_OR_END_OBJECT
+        }
+        p->offset = SIZE_MAX;
 }
 void pla__parse_buffers(pla__parse_state * p, pla_GLTF_state * state, pla_GLTF_buffer * buffer){
-        pla__parse_through(p);
+        (void)state;
+        pla__eat_symbol(p,  '{');
+        if(p->offset == SIZE_MAX) return;
+        PLA__LOOP(i, 3){
+                PLA__PARSE_KEY
+                if(pla_str_is_equal(key, "uri")) pla__parse_string_value(buffer, uri);
+                else if(pla_str_is_equal(key, "byteLength")) pla__parse_uint32_value(buffer, byte_length);
+                else pla__parse_through(p);
+                PLA__CONTINUE_OR_END_OBJECT
+        }
+        p->offset = SIZE_MAX;
 }
 void pla__parse_asset(pla__parse_state * p, pla_GLTF_state * state, pla_GLTF_asset * asset){
         pla__eat_symbol(p,  '{');
@@ -902,9 +1045,9 @@ void pla__parse_animations(pla__parse_state * p, pla_GLTF_state * state, pla_GLT
                         uint32_t * values_size = &index;
                         if(state->gltf){
                                 animation->channels = pla__create_offset_array(animation_channels, *value);
-                                values_size = &state->gltf->animations.size;
+                                values_size = &animation->channels.size;
                         }
-                        PLA__PARSE_ARRAY(value, pla__parse_animation_channels, values_size, scene_nodes);
+                        PLA__PARSE_ARRAY(value, pla__parse_animation_channels, values_size, animation_channels);
                 } 
                 // else 
                 pla__parse_through(p);
@@ -919,22 +1062,23 @@ void pla__parse_root(pla__parse_state * p, pla_GLTF_state * state){
         PLA__LOOP(i, 2 << 4){
                 PLA__PARSE_KEY
                 if(pla_str_is_equal(key, "asset")){
-                pla_GLTF_asset * asset = NULL;
-                if(state->gltf) asset = &state->gltf->asset;
+                        pla_GLTF_asset * asset = NULL;
+                        if(state->gltf) asset = &state->gltf->asset;
                         pla__parse_asset(p, state, asset);
                 } else if(pla_str_is_equal(key, "scene")){
-                        pla__parse_uint32_value(state->gltf, scene);
+                        uint32_t * scene = NULL;
+                        if(state->gltf) scene = &state->gltf->scene;
+                        pla__parse_uint32_t(p, scene);
                 }
                 #define X(prop, type, name) else if(pla_str_is_equal(key, name)){\
-                        type * prop = NULL;\
-                        uint32_t index;\
-                        uint32_t * prop##_size = &index;\
+                        type * values = NULL;\
+                        uint32_t * rel_size = NULL;\
                         if(state->gltf){\
                                 state->gltf->prop.offset = state->offsets.prop;\
-                                prop##_size = &state->gltf->prop.size;\
-                                prop = (type *)((uint8_t *)state->buffer + state->offsets.prop);\
+                                values = (type *)((uint8_t *)state->buffer + state->offsets.prop);\
+                                rel_size = &state->gltf->prop.size;\
                         }\
-                        PLA__PARSE_ARRAY(prop, pla__parse_##prop, prop##_size, prop);\
+                        PLA__PARSE_ARRAY(values, pla__parse_##prop, rel_size, prop);\
                 } 
                 ROOT_ARRAYS
                 #undef X
@@ -946,25 +1090,29 @@ void pla__parse_root(pla__parse_state * p, pla_GLTF_state * state){
 
 uint32_t pla__calculate_aligned_offset(uint32_t offset){
         static size_t alignment = sizeof(void *);
-        return offset +(alignment - (offset % alignment));
+        size_t a = (offset % alignment);
+        return offset +((alignment - a) * (a != 0));
 }
+
+#define pla__calculate_new_offset(prop, size) if(size > 0){state->offsets.prop = current_offset; current_offset += pla__calculate_aligned_offset(size);}else{state->offsets.prop = UINT32_MAX;}
+#define pla__calculate_new_offset_with_type(prop, type) pla__calculate_new_offset(prop, sizeof(type) * state->sizes.prop)
 
 bool pla__calculate_buffer_offsets(pla_GLTF_state * state) PLA_NOEXCEPT{
         if(!state) return false;
         uint32_t current_offset = 0;
         current_offset += pla__calculate_aligned_offset(sizeof(*state->gltf));
-        #define calculate_new_offset(prop, size) state->offsets.prop = current_offset; current_offset += pla__calculate_aligned_offset(size)
-        #define calculate_new_offset_with_type(prop, type) state->offsets.prop = calculate_new_offset(prop, sizeof(type) * state->sizes.prop)
-        #define X(prop, type, _) calculate_new_offset(prop, sizeof(type) * state->sizes.prop);
+
+        #define X(prop, type, _) pla__calculate_new_offset(prop, sizeof(type) * state->sizes.prop);
         ROOT_ARRAYS
         #undef X
-        calculate_new_offset_with_type(scene_nodes, pla_GLTF_node);
-        calculate_new_offset_with_type(mesh_primitives, pla_GLTF_mesh_primitive);
-        calculate_new_offset_with_type(mesh_primitive_attributes, pla_GLTF_mesh_primitive_attribute);
-        #define X(type) calculate_new_offset_with_type(components[pla_GLTF_component_type_##type], type);
+        pla__calculate_new_offset_with_type(scene_nodes, pla_GLTF_node);
+        pla__calculate_new_offset_with_type(mesh_primitives, pla_GLTF_mesh_primitive);
+        pla__calculate_new_offset_with_type(mesh_primitive_attributes, pla_GLTF_mesh_primitive_attribute);
+        pla__calculate_new_offset_with_type(animation_channels, pla_GLTF_animation_channel);
+        #define X(type) pla__calculate_new_offset_with_type(components[pla_GLTF_component_type_##type], type);
         PLA_GLTF_COMPONENT_TYPE_LIST
         #undef X
-        state->offsets.string_bytes = calculate_new_offset(string_bytes, state->sizes.string_bytes); 
+         pla__calculate_new_offset(string_bytes, state->sizes.string_bytes); 
         state->buffer_size = current_offset;
         return true;
 }
@@ -992,6 +1140,7 @@ PLA_EXPORT bool pla_init_GLTF_state_from_glb(pla_GLTF_state * state, uint8_t con
         state->data_size = header.binary.size;
         state->json = header.json.data;
         state->json_size = header.json.size;
+
         pla__parse_state p = {.data = state->json, .size = state->json_size, .offset = 0};
         pla__parse_root(&p, state);
         if(p.offset == SIZE_MAX) return false;
@@ -1006,7 +1155,7 @@ PLA_EXPORT bool pla_parse_GLTF_glb(pla_GLTF_state * state, void * buffer) PLA_NO
         state->sizes = (pla_GLTF_sizes){0};
         state->buffer = buffer;
         state->gltf = (pla_GLTF *)buffer;
-        memset(buffer, 0, sizeof(*state->gltf));
+        memset(buffer, 0, state->buffer_size);
         pla__parse_state p = {.data = state->json, .size = state->json_size, .offset = 0};
         pla__parse_root(&p, state);
         return p.offset != SIZE_MAX;
